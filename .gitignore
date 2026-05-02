@@ -1,0 +1,22 @@
+node_modules/
+.expo/
+dist/
+npm-debug.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+web-build/
+android/
+ios/
+
+.DS_Store
+
+# Environment variables - never commit these
+.env
+.env.local
+.env.production
+
+.expo-shared/
