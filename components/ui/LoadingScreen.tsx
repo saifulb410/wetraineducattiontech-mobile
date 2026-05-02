@@ -1,10 +1,16 @@
-import { View, ActivityIndicator, Text } from 'react-native'
+import { View, ActivityIndicator, Text, StyleSheet } from 'react-native'
+import { colors } from '@/lib/theme'
 
 export function LoadingScreen({ message = 'Loading...' }: { message?: string }) {
   return (
-    <View className="flex-1 items-center justify-center bg-brand-navy">
-      <ActivityIndicator size="large" color="#D4AF37" />
-      <Text className="mt-4 text-brand-gold text-base">{message}</Text>
+    <View style={s.container}>
+      <ActivityIndicator size="large" color={colors.gold} />
+      <Text style={s.text}>{message}</Text>
     </View>
   )
 }
+
+const s = StyleSheet.create({
+  container: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.navy },
+  text: { marginTop: 16, color: colors.gold, fontSize: 16 },
+})

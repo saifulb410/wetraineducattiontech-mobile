@@ -1,4 +1,5 @@
-import { TouchableOpacity, Text, ActivityIndicator } from 'react-native'
+import { TouchableOpacity, Text, ActivityIndicator, StyleSheet } from 'react-native'
+import { colors } from '@/lib/theme'
 
 interface ButtonProps {
   title: string
@@ -6,44 +7,27 @@ interface ButtonProps {
   loading?: boolean
   variant?: 'primary' | 'secondary' | 'ghost'
   disabled?: boolean
-  className?: string
 }
 
-export function Button({
-  title,
-  onPress,
-  loading,
-  variant = 'primary',
-  disabled,
-  className = '',
-}: ButtonProps) {
-  const base = 'rounded-xl px-6 py-4 items-center justify-center flex-row'
-  const styles = {
-    primary: 'bg-brand-gold',
-    secondary: 'border border-brand-gold bg-transparent',
-    ghost: 'bg-transparent',
-  }
-  const textStyles = {
-    primary: 'text-brand-navy font-bold text-base',
-    secondary: 'text-brand-gold font-semibold text-base',
-    ghost: 'text-brand-gold text-base',
-  }
+export function Button({ title, onPress, loading, variant = 'primary', disabled }: ButtonProps) {
+  const bg = variant === 'primary' ? colors.gold : 'transparent'
+  const border = variant === 'secondary' ? colors.gold : 'transparent'
+  const textColor = variant === 'primary' ? colors.navy : colors.gold
 
   return (
     <TouchableOpacity
-      className={`${base} ${styles[variant]} ${disabled || loading ? 'opacity-50' : ''} ${className}`}
+      style={[s.btn, { backgroundColor: bg, borderColor: border, borderWidth: variant === 'secondary' ? 1 : 0, opacity: disabled || loading ? 0.5 : 1 }]}
       onPress={onPress}
       disabled={disabled || loading}
       activeOpacity={0.8}
     >
-      {loading && (
-        <ActivityIndicator
-          size="small"
-          color={variant === 'primary' ? '#0a1628' : '#D4AF37'}
-          style={{ marginRight: 8 }}
-        />
-      )}
-      <Text className={textStyles[variant]}>{title}</Text>
+      {loading && <ActivityIndicator size="small" color={textColor} style={{ marginRight: 8 }} />}
+      <Text style={[s.label, { color: textColor }]}>{title}</Text>
     </TouchableOpacity>
   )
 }
+
+const s = StyleSheet.create({
+  btn: { borderRadius: 12, paddingHorizontal: 24, paddingVertical: 14, alignItems: 'center', justifyContent: 'center', flexDirection: 'row' },
+  label: { fontSize: 16, fontWeight: 'bold' },
+})

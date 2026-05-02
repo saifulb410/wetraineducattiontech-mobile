@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { View, Text, ScrollView, RefreshControl } from 'react-native'
+import { View, Text, ScrollView, RefreshControl, StyleSheet } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { supabase } from '@/lib/supabase'
 import { useAuthContext } from '@/context/AuthContext'
 import { Card } from '@/components/ui/Card'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
+import { colors } from '@/lib/theme'
 
 interface Certificate {
   id: string
@@ -21,11 +22,7 @@ export default function Certificates() {
 
   const fetchCerts = async () => {
     if (!user) return
-    const { data } = await supabase
-      .from('certifications')
-      .select('id, certificate_number, issued_at, services(name)')
-      .eq('user_id', user.id)
-      .order('issued_at', { ascending: false })
+    const { data } = await supabase.from('certifications').select('id,certificate_number,issued_at,services(name)').eq('user_id', user.id).order('issued_at', { ascending: false })
     setCerts((data as Certificate[]) ?? [])
     setLoading(false)
     setRefreshing(false)
@@ -37,41 +34,35 @@ export default function Certificates() {
   if (loading) return <LoadingScreen />
 
   return (
-    <ScrollView
-      className="flex-1 bg-brand-navy"
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#D4AF37" />}
-    >
-      <View className="px-4 pt-6 pb-10">
-        <Text className="text-white text-2xl font-bold mb-6">My Certificates</Text>
-
-        {certs.length === 0 ? (
-          <Card className="items-center py-10">
-            <Ionicons name="ribbon-outline" size={48} color="#D4AF37" />
-            <Text className="text-slate-400 mt-3 text-center">
-              No certificates yet. Complete a course to earn one.
-            </Text>
-          </Card>
-        ) : (
-          certs.map(cert => (
-            <Card key={cert.id} className="mb-3">
-              <View className="flex-row items-center mb-2">
-                <Ionicons name="ribbon" size={20} color="#D4AF37" style={{ marginRight: 8 }} />
-                <Text className="text-white font-bold flex-1">
-                  {cert.services?.[0]?.name ?? 'Certificate'}
-                </Text>
+    <ScrollView style={s.scroll} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.gold} />}>
+      <View style={s.container}>
+        <Text style={s.title}>My Certificates</Text>
+        {certs.length === 0
+          ? <Card style={s.emptyCard}><Ionicons name="ribbon-outline" size={48} color={colors.gold} /><Text style={s.emptyText}>No certificates yet. Complete a course to earn one.</Text></Card>
+          : certs.map(c => (
+            <Card key={c.id} style={s.certCard}>
+              <View style={s.row}>
+                <Ionicons name="ribbon" size={20} color={colors.gold} />
+                <Text style={s.certName}>{c.services?.[0]?.name ?? 'Certificate'}</Text>
               </View>
-              {cert.certificate_number && (
-                <Text className="text-brand-gold text-xs mb-1">
-                  #{cert.certificate_number}
-                </Text>
-              )}
-              <Text className="text-slate-400 text-xs">
-                Issued: {new Date(cert.issued_at).toLocaleDateString()}
-              </Text>
+              {c.certificate_number && <Text style={s.certNum}>#{c.certificate_number}</Text>}
+              <Text style={s.date}>Issued: {new Date(c.issued_at).toLocaleDateString()}</Text>
             </Card>
-          ))
-        )}
+          ))}
       </View>
     </ScrollView>
   )
 }
+
+const s = StyleSheet.create({
+  scroll: { flex: 1, backgroundColor: colors.navy },
+  container: { padding: 16, paddingBottom: 40 },
+  title: { color: colors.white, fontSize: 22, fontWeight: 'bold', marginBottom: 24 },
+  emptyCard: { alignItems: 'center', paddingVertical: 40 },
+  emptyText: { color: colors.slate400, marginTop: 12, textAlign: 'center' },
+  certCard: { marginBottom: 12 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  certName: { color: colors.white, fontWeight: 'bold', flex: 1 },
+  certNum: { color: colors.gold, fontSize: 12, marginBottom: 4 },
+  date: { color: colors.slate400, fontSize: 12 },
+})

@@ -1,24 +1,28 @@
-import { View, Text } from 'react-native'
+import { View, Text, StyleSheet } from 'react-native'
 import { useRouter } from 'expo-router'
 import { Button } from '@/components/ui/Button'
 import { supabase } from '@/lib/supabase'
+import { colors } from '@/lib/theme'
 
 export default function Unauthorized() {
   const router = useRouter()
-
   const handleSignOut = async () => {
     await supabase.auth.signOut()
     router.replace('/(auth)/login')
   }
-
   return (
-    <View className="flex-1 items-center justify-center bg-brand-navy px-6">
-      <Text className="text-5xl mb-4">🔒</Text>
-      <Text className="text-white text-2xl font-bold mb-2 text-center">Access Denied</Text>
-      <Text className="text-slate-400 text-base text-center mb-8">
-        Your account does not have access to any module. Contact your administrator.
-      </Text>
+    <View style={s.container}>
+      <Text style={s.icon}>🔒</Text>
+      <Text style={s.title}>Access Denied</Text>
+      <Text style={s.sub}>Your account has no module access. Contact your administrator.</Text>
       <Button title="Sign Out" onPress={handleSignOut} />
     </View>
   )
 }
+
+const s = StyleSheet.create({
+  container: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.navy, paddingHorizontal: 24 },
+  icon: { fontSize: 48, marginBottom: 16 },
+  title: { color: colors.white, fontSize: 24, fontWeight: 'bold', marginBottom: 8 },
+  sub: { color: colors.slate400, fontSize: 15, textAlign: 'center', marginBottom: 32 },
+})

@@ -1,15 +1,11 @@
 import { useEffect, useState } from 'react'
-import { View, Text, ScrollView, RefreshControl } from 'react-native'
+import { View, Text, ScrollView, RefreshControl, StyleSheet } from 'react-native'
 import { supabase } from '@/lib/supabase'
 import { useAuthContext } from '@/context/AuthContext'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
-
-interface Profile {
-  full_name: string | null
-  role: string
-}
+import { colors } from '@/lib/theme'
 
 interface Order {
   id: string
@@ -18,9 +14,15 @@ interface Order {
   services?: { name: string }[] | null
 }
 
+const STATUS_COLOR: Record<string, string> = {
+  completed: colors.green,
+  pending: colors.amber,
+  cancelled: colors.red,
+}
+
 export default function EducationDashboard() {
   const { user, signOut } = useAuthContext()
-  const [profile, setProfile] = useState<Profile | null>(null)
+  const [name, setName] = useState<string | null>(null)
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -28,95 +30,76 @@ export default function EducationDashboard() {
   const fetchData = async () => {
     if (!user) return
     const [profileRes, ordersRes] = await Promise.all([
-      supabase.from('profiles').select('full_name, role').eq('id', user.id).maybeSingle(),
-      supabase
-        .from('orders')
-        .select('id, status, created_at, services(name)')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(5),
+      supabase.from('profiles').select('full_name').eq('id', user.id).maybeSingle(),
+      supabase.from('orders').select('id,status,created_at,services(name)').eq('user_id', user.id).order('created_at', { ascending: false }).limit(5),
     ])
-    setProfile(profileRes.data)
+    setName(profileRes.data?.full_name ?? null)
     setOrders((ordersRes.data as Order[]) ?? [])
     setLoading(false)
     setRefreshing(false)
   }
 
   useEffect(() => { fetchData() }, [user])
-
   const onRefresh = () => { setRefreshing(true); fetchData() }
 
   if (loading) return <LoadingScreen />
 
-  const statusColor: Record<string, string> = {
-    completed: '#22c55e',
-    pending: '#f59e0b',
-    cancelled: '#ef4444',
-  }
-
   return (
-    <ScrollView
-      className="flex-1 bg-brand-navy"
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#D4AF37" />}
-    >
-      <View className="px-4 pt-6 pb-10">
-        {/* Header */}
-        <View className="flex-row justify-between items-center mb-6">
+    <ScrollView style={s.scroll} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.gold} />}>
+      <View style={s.container}>
+        <View style={s.row}>
           <View>
-            <Text className="text-slate-400 text-sm">Welcome back,</Text>
-            <Text className="text-white text-xl font-bold">
-              {profile?.full_name ?? user?.email ?? 'Student'}
-            </Text>
+            <Text style={s.greeting}>Welcome back,</Text>
+            <Text style={s.name}>{name ?? user?.email ?? 'Student'}</Text>
           </View>
-          <Button title="Sign Out" onPress={signOut} variant="ghost" className="px-2" />
+          <Button title="Sign Out" onPress={signOut} variant="ghost" />
         </View>
 
-        {/* Stats row */}
-        <View className="flex-row gap-3 mb-6">
-          <Card className="flex-1 items-center py-4">
-            <Text className="text-brand-gold text-2xl font-bold">{orders.length}</Text>
-            <Text className="text-slate-400 text-xs mt-1">Enrollments</Text>
+        <View style={s.statsRow}>
+          <Card style={s.statCard}>
+            <Text style={s.statNum}>{orders.length}</Text>
+            <Text style={s.statLabel}>Enrollments</Text>
           </Card>
-          <Card className="flex-1 items-center py-4">
-            <Text className="text-brand-gold text-2xl font-bold">
-              {orders.filter(o => o.status === 'completed').length}
-            </Text>
-            <Text className="text-slate-400 text-xs mt-1">Completed</Text>
+          <Card style={s.statCard}>
+            <Text style={s.statNum}>{orders.filter(o => o.status === 'completed').length}</Text>
+            <Text style={s.statLabel}>Completed</Text>
           </Card>
         </View>
 
-        {/* Recent Orders */}
-        <Text className="text-white text-lg font-bold mb-3">Recent Enrollments</Text>
-        {orders.length === 0 ? (
-          <Card>
-            <Text className="text-slate-400 text-center py-4">No enrollments yet.</Text>
-          </Card>
-        ) : (
-          orders.map(order => (
-            <Card key={order.id} className="mb-3">
-              <Text className="text-white font-semibold mb-1">
-                {order.services?.[0]?.name ?? 'Service'}
-              </Text>
-              <View className="flex-row justify-between items-center">
-                <Text className="text-slate-400 text-xs">
-                  {new Date(order.created_at).toLocaleDateString()}
-                </Text>
-                <View
-                  className="rounded-full px-2 py-0.5"
-                  style={{ backgroundColor: statusColor[order.status] + '22' }}
-                >
-                  <Text
-                    className="text-xs font-semibold capitalize"
-                    style={{ color: statusColor[order.status] ?? '#94a3b8' }}
-                  >
-                    {order.status}
-                  </Text>
+        <Text style={s.sectionTitle}>Recent Enrollments</Text>
+        {orders.length === 0
+          ? <Card><Text style={s.empty}>No enrollments yet.</Text></Card>
+          : orders.map(o => (
+            <Card key={o.id} style={s.orderCard}>
+              <Text style={s.orderName}>{o.services?.[0]?.name ?? 'Service'}</Text>
+              <View style={s.row}>
+                <Text style={s.date}>{new Date(o.created_at).toLocaleDateString()}</Text>
+                <View style={[s.badge, { backgroundColor: (STATUS_COLOR[o.status] ?? colors.slate400) + '22' }]}>
+                  <Text style={[s.badgeText, { color: STATUS_COLOR[o.status] ?? colors.slate400 }]}>{o.status}</Text>
                 </View>
               </View>
             </Card>
-          ))
-        )}
+          ))}
       </View>
     </ScrollView>
   )
 }
+
+const s = StyleSheet.create({
+  scroll: { flex: 1, backgroundColor: colors.navy },
+  container: { padding: 16, paddingBottom: 40 },
+  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
+  greeting: { color: colors.slate400, fontSize: 13 },
+  name: { color: colors.white, fontSize: 20, fontWeight: 'bold' },
+  statsRow: { flexDirection: 'row', gap: 12, marginBottom: 24 },
+  statCard: { flex: 1, alignItems: 'center', paddingVertical: 20 },
+  statNum: { color: colors.gold, fontSize: 28, fontWeight: 'bold' },
+  statLabel: { color: colors.slate400, fontSize: 12, marginTop: 4 },
+  sectionTitle: { color: colors.white, fontSize: 17, fontWeight: 'bold', marginBottom: 12 },
+  orderCard: { marginBottom: 12 },
+  orderName: { color: colors.white, fontWeight: '600', marginBottom: 8 },
+  date: { color: colors.slate400, fontSize: 12 },
+  badge: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
+  badgeText: { fontSize: 11, fontWeight: '600', textTransform: 'capitalize' },
+  empty: { color: colors.slate400, textAlign: 'center', paddingVertical: 16 },
+})

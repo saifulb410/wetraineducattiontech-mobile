@@ -1,42 +1,27 @@
 import { useEffect, useState } from 'react'
-import { View, Text, ScrollView, RefreshControl } from 'react-native'
+import { View, Text, ScrollView, RefreshControl, StyleSheet } from 'react-native'
 import { supabase } from '@/lib/supabase'
 import { useAuthContext } from '@/context/AuthContext'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
+import { colors } from '@/lib/theme'
 
-interface LeadStats {
-  status: string
-  count: number
-}
-
-const STATUS_COLORS: Record<string, string> = {
-  new: '#3b82f6',
-  contacted: '#f59e0b',
-  qualified: '#8b5cf6',
-  converted: '#22c55e',
-  lost: '#ef4444',
-}
+const STATUS_COLORS: Record<string, string> = { new: colors.blue, contacted: colors.amber, qualified: colors.purple, converted: colors.green, lost: colors.red }
 
 export default function CrmDashboard() {
-  const { user, roles, signOut } = useAuthContext()
-  const [stats, setStats] = useState<LeadStats[]>([])
+  const { roles, signOut } = useAuthContext()
+  const [stats, setStats] = useState<{ status: string; count: number }[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
   const fetchStats = async () => {
-    const { data } = await supabase
-      .from('crm_leads')
-      .select('status')
+    const { data } = await supabase.from('crm_leads').select('status')
     if (data) {
       const counts: Record<string, number> = {}
-      data.forEach(row => {
-        counts[row.status] = (counts[row.status] ?? 0) + 1
-      })
-      const statsArr = Object.entries(counts).map(([status, count]) => ({ status, count }))
-      setStats(statsArr)
+      data.forEach(r => { counts[r.status] = (counts[r.status] ?? 0) + 1 })
+      setStats(Object.entries(counts).map(([status, count]) => ({ status, count })))
       setTotal(data.length)
     }
     setLoading(false)
@@ -49,40 +34,44 @@ export default function CrmDashboard() {
   if (loading) return <LoadingScreen />
 
   return (
-    <ScrollView
-      className="flex-1 bg-brand-navy"
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#D4AF37" />}
-    >
-      <View className="px-4 pt-6 pb-10">
-        <View className="flex-row justify-between items-center mb-6">
+    <ScrollView style={s.scroll} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.gold} />}>
+      <View style={s.container}>
+        <View style={s.header}>
           <View>
-            <Text className="text-slate-400 text-sm">CRM Dashboard</Text>
-            <Text className="text-white text-xl font-bold capitalize">
-              {roles?.crmRole?.toLowerCase() ?? 'Agent'}
-            </Text>
+            <Text style={s.sub}>CRM Dashboard</Text>
+            <Text style={s.role}>{roles?.crmRole ?? 'Agent'}</Text>
           </View>
-          <Button title="Sign Out" onPress={signOut} variant="ghost" className="px-2" />
+          <Button title="Sign Out" onPress={signOut} variant="ghost" />
         </View>
-
-        <Card className="mb-6 items-center py-5">
-          <Text className="text-brand-gold text-5xl font-bold">{total}</Text>
-          <Text className="text-slate-400 mt-1">Total Leads</Text>
+        <Card style={s.totalCard}>
+          <Text style={s.totalNum}>{total}</Text>
+          <Text style={s.totalLabel}>Total Leads</Text>
         </Card>
-
-        <Text className="text-white text-lg font-bold mb-3">Leads by Status</Text>
+        <Text style={s.sectionTitle}>Leads by Status</Text>
         {stats.map(({ status, count }) => (
-          <Card key={status} className="mb-3 flex-row items-center justify-between">
-            <View className="flex-row items-center gap-2">
-              <View
-                className="w-3 h-3 rounded-full"
-                style={{ backgroundColor: STATUS_COLORS[status] ?? '#94a3b8' }}
-              />
-              <Text className="text-white capitalize font-medium">{status}</Text>
-            </View>
-            <Text className="text-brand-gold font-bold text-lg">{count}</Text>
+          <Card key={status} style={s.statRow}>
+            <View style={[s.dot, { backgroundColor: STATUS_COLORS[status] ?? colors.slate400 }]} />
+            <Text style={s.statusText}>{status}</Text>
+            <Text style={s.countText}>{count}</Text>
           </Card>
         ))}
       </View>
     </ScrollView>
   )
 }
+
+const s = StyleSheet.create({
+  scroll: { flex: 1, backgroundColor: colors.navy },
+  container: { padding: 16, paddingBottom: 40 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
+  sub: { color: colors.slate400, fontSize: 13 },
+  role: { color: colors.white, fontSize: 20, fontWeight: 'bold', textTransform: 'capitalize' },
+  totalCard: { alignItems: 'center', paddingVertical: 24, marginBottom: 24 },
+  totalNum: { color: colors.gold, fontSize: 48, fontWeight: 'bold' },
+  totalLabel: { color: colors.slate400, marginTop: 4 },
+  sectionTitle: { color: colors.white, fontSize: 17, fontWeight: 'bold', marginBottom: 12 },
+  statRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  dot: { width: 12, height: 12, borderRadius: 6, marginRight: 10 },
+  statusText: { color: colors.white, textTransform: 'capitalize', fontWeight: '500', flex: 1 },
+  countText: { color: colors.gold, fontWeight: 'bold', fontSize: 18 },
+})

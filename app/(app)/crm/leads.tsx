@@ -1,26 +1,12 @@
 import { useEffect, useState } from 'react'
-import { View, Text, ScrollView, RefreshControl, TextInput } from 'react-native'
+import { View, Text, ScrollView, RefreshControl, TextInput, StyleSheet } from 'react-native'
 import { supabase } from '@/lib/supabase'
 import { Card } from '@/components/ui/Card'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
+import { colors } from '@/lib/theme'
 
-interface Lead {
-  id: string
-  name: string | null
-  email: string | null
-  phone: string | null
-  status: string
-  source: string | null
-  created_at: string
-}
-
-const STATUS_COLORS: Record<string, string> = {
-  new: '#3b82f6',
-  contacted: '#f59e0b',
-  qualified: '#8b5cf6',
-  converted: '#22c55e',
-  lost: '#ef4444',
-}
+interface Lead { id: string; name: string | null; email: string | null; phone: string | null; status: string; source: string | null; created_at: string }
+const STATUS_COLORS: Record<string, string> = { new: colors.blue, contacted: colors.amber, qualified: colors.purple, converted: colors.green, lost: colors.red }
 
 export default function Leads() {
   const [leads, setLeads] = useState<Lead[]>([])
@@ -30,78 +16,38 @@ export default function Leads() {
   const [refreshing, setRefreshing] = useState(false)
 
   const fetchLeads = async () => {
-    const { data } = await supabase
-      .from('crm_leads')
-      .select('id, name, email, phone, status, source, created_at')
-      .order('created_at', { ascending: false })
-      .limit(50)
+    const { data } = await supabase.from('crm_leads').select('id,name,email,phone,status,source,created_at').order('created_at', { ascending: false }).limit(50)
     const rows = (data as Lead[]) ?? []
-    setLeads(rows)
-    setFiltered(rows)
-    setLoading(false)
-    setRefreshing(false)
+    setLeads(rows); setFiltered(rows); setLoading(false); setRefreshing(false)
   }
 
   useEffect(() => { fetchLeads() }, [])
-
   useEffect(() => {
     const q = search.toLowerCase()
-    setFiltered(
-      q ? leads.filter(l =>
-        l.name?.toLowerCase().includes(q) ||
-        l.email?.toLowerCase().includes(q) ||
-        l.phone?.includes(q)
-      ) : leads
-    )
+    setFiltered(q ? leads.filter(l => l.name?.toLowerCase().includes(q) || l.email?.toLowerCase().includes(q) || l.phone?.includes(q)) : leads)
   }, [search, leads])
-
   const onRefresh = () => { setRefreshing(true); fetchLeads() }
 
   if (loading) return <LoadingScreen />
 
   return (
-    <ScrollView
-      className="flex-1 bg-brand-navy"
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#D4AF37" />}
-    >
-      <View className="px-4 pt-4 pb-10">
-        <TextInput
-          className="bg-brand-navy-light text-white rounded-xl px-4 py-3 mb-4 border border-slate-700"
-          placeholder="Search by name, email, phone…"
-          placeholderTextColor="#64748b"
-          value={search}
-          onChangeText={setSearch}
-        />
-
-        <Text className="text-slate-400 text-sm mb-3">{filtered.length} leads</Text>
-
+    <ScrollView style={s.scroll} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.gold} />}>
+      <View style={s.container}>
+        <TextInput style={s.search} placeholder="Search name, email, phone…" placeholderTextColor={colors.slate500} value={search} onChangeText={setSearch} />
+        <Text style={s.count}>{filtered.length} leads</Text>
         {filtered.map(lead => (
-          <Card key={lead.id} className="mb-3">
-            <View className="flex-row justify-between items-start mb-1">
-              <Text className="text-white font-bold flex-1 mr-2">
-                {lead.name ?? 'Unknown'}
-              </Text>
-              <View
-                className="rounded-full px-2 py-0.5"
-                style={{ backgroundColor: (STATUS_COLORS[lead.status] ?? '#94a3b8') + '22' }}
-              >
-                <Text
-                  className="text-xs font-semibold capitalize"
-                  style={{ color: STATUS_COLORS[lead.status] ?? '#94a3b8' }}
-                >
-                  {lead.status}
-                </Text>
+          <Card key={lead.id} style={s.card}>
+            <View style={s.row}>
+              <Text style={s.leadName}>{lead.name ?? 'Unknown'}</Text>
+              <View style={[s.badge, { backgroundColor: (STATUS_COLORS[lead.status] ?? colors.slate400) + '22' }]}>
+                <Text style={[s.badgeText, { color: STATUS_COLORS[lead.status] ?? colors.slate400 }]}>{lead.status}</Text>
               </View>
             </View>
-            {lead.email && <Text className="text-slate-400 text-xs mb-0.5">{lead.email}</Text>}
-            {lead.phone && <Text className="text-slate-400 text-xs mb-0.5">{lead.phone}</Text>}
-            <View className="flex-row justify-between mt-2">
-              {lead.source && (
-                <Text className="text-slate-500 text-xs capitalize">{lead.source}</Text>
-              )}
-              <Text className="text-slate-500 text-xs">
-                {new Date(lead.created_at).toLocaleDateString()}
-              </Text>
+            {lead.email && <Text style={s.detail}>{lead.email}</Text>}
+            {lead.phone && <Text style={s.detail}>{lead.phone}</Text>}
+            <View style={s.row}>
+              {lead.source && <Text style={s.meta}>{lead.source}</Text>}
+              <Text style={s.meta}>{new Date(lead.created_at).toLocaleDateString()}</Text>
             </View>
           </Card>
         ))}
@@ -109,3 +55,17 @@ export default function Leads() {
     </ScrollView>
   )
 }
+
+const s = StyleSheet.create({
+  scroll: { flex: 1, backgroundColor: colors.navy },
+  container: { padding: 16, paddingBottom: 40 },
+  search: { backgroundColor: colors.navyLight, color: colors.white, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, borderWidth: 1, borderColor: colors.slate700, marginBottom: 12, fontSize: 15 },
+  count: { color: colors.slate400, fontSize: 13, marginBottom: 12 },
+  card: { marginBottom: 12 },
+  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  leadName: { color: colors.white, fontWeight: 'bold', flex: 1, marginRight: 8 },
+  badge: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
+  badgeText: { fontSize: 11, fontWeight: '600', textTransform: 'capitalize' },
+  detail: { color: colors.slate400, fontSize: 12, marginBottom: 2 },
+  meta: { color: colors.slate500, fontSize: 11, textTransform: 'capitalize' },
+})

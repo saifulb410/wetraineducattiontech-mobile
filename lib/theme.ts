@@ -1,0 +1,15 @@
+export const colors = {
+  navy: '#0a1628',
+  navyLight: '#0f2040',
+  gold: '#D4AF37',
+  white: '#ffffff',
+  slate300: '#cbd5e1',
+  slate400: '#94a3b8',
+  slate500: '#64748b',
+  slate700: '#334155',
+  green: '#22c55e',
+  amber: '#f59e0b',
+  red: '#ef4444',
+  blue: '#3b82f6',
+  purple: '#8b5cf6',
+}

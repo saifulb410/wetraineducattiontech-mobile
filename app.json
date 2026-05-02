@@ -1,20 +1,20 @@
 {
   "expo": {
-    "name": "WeTrainEducation",
-    "slug": "wetraineducattiontech",
+    "name": "WeTrainEducationTech",
+    "slug": "wetraineducationtech",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.wetraineducattiontech.app"
+      "bundleIdentifier": "com.wetraineducationtech.app"
     },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#0a1628"
       },
-      "package": "com.wetraineducattiontech.app",
+      "package": "com.wetraineducationtech.app",
       "intentFilters": [
         {
           "action": "VIEW",
