@@ -26,17 +26,30 @@
               "pathPrefix": "/auth"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },
     "plugins": [
       "expo-router",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true
     },
-    "scheme": "wetrainedu"
+    "scheme": "wetrainedu",
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "95e889ae-0312-4052-83e2-e46d9d94019b"
+      }
+    },
+    "owner": "saifulb410"
   }
 }
