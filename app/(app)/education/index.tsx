@@ -15,7 +15,7 @@ interface Order {
   id: string
   status: string
   created_at: string
-  services?: { name: string } | null
+  services?: { name: string }[] | null
 }
 
 export default function EducationDashboard() {
@@ -95,7 +95,7 @@ export default function EducationDashboard() {
           orders.map(order => (
             <Card key={order.id} className="mb-3">
               <Text className="text-white font-semibold mb-1">
-                {order.services?.name ?? 'Service'}
+                {order.services?.[0]?.name ?? 'Service'}
               </Text>
               <View className="flex-row justify-between items-center">
                 <Text className="text-slate-400 text-xs">

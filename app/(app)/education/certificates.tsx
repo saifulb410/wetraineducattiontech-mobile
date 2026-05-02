@@ -10,7 +10,7 @@ interface Certificate {
   id: string
   certificate_number: string | null
   issued_at: string
-  services?: { name: string } | null
+  services?: { name: string }[] | null
 }
 
 export default function Certificates() {
@@ -57,7 +57,7 @@ export default function Certificates() {
               <View className="flex-row items-center mb-2">
                 <Ionicons name="ribbon" size={20} color="#D4AF37" style={{ marginRight: 8 }} />
                 <Text className="text-white font-bold flex-1">
-                  {cert.services?.name ?? 'Certificate'}
+                  {cert.services?.[0]?.name ?? 'Certificate'}
                 </Text>
               </View>
               {cert.certificate_number && (
