@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { View, Text, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, ActivityIndicator } from 'react-native'
 import * as WebBrowser from 'expo-web-browser'
 import { makeRedirectUri } from 'expo-auth-session'
+import { useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/Button'
@@ -10,6 +11,7 @@ import { colors } from '@/lib/theme'
 WebBrowser.maybeCompleteAuthSession()
 
 export default function Login() {
+  const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -115,7 +117,9 @@ export default function Login() {
           ? <Button title="Sign In" onPress={handleLogin} loading={loading} />
           : <Button title="Send Magic Link" onPress={handleMagicLink} loading={magicLoading} />
         }
-        <Text style={s.footer}>New users sign in with Google or use Magic Link above.</Text>
+        <TouchableOpacity onPress={() => router.push('/(auth)/register' as any)} style={{ marginTop: 24, alignItems: 'center' }}>
+          <Text style={s.footer}>Don't have an account? <Text style={{ color: colors.gold, fontWeight: '700' }}>Create Account</Text></Text>
+        </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
   )
@@ -139,5 +143,5 @@ const s = StyleSheet.create({
   tabTextActive: { color: colors.navy },
   label: { color: colors.slate300, fontSize: 13, fontWeight: '600', marginBottom: 6 },
   input: { backgroundColor: colors.navyLight, color: colors.white, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, fontSize: 16, borderWidth: 1, borderColor: colors.slate700, marginBottom: 16 },
-  footer: { color: colors.slate500, fontSize: 12, textAlign: 'center', marginTop: 32 },
+  footer: { color: colors.slate500, fontSize: 14, textAlign: 'center' },
 })
