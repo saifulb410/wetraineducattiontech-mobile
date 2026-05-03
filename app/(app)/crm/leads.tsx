@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { View, Text, ScrollView, RefreshControl, TextInput, StyleSheet } from 'react-native'
+import { View, Text, ScrollView, RefreshControl, TextInput, TouchableOpacity, StyleSheet } from 'react-native'
+import { useRouter } from 'expo-router'
 import { supabase } from '@/lib/supabase'
 import { Card } from '@/components/ui/Card'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
@@ -9,6 +10,7 @@ interface Lead { id: string; name: string | null; email: string | null; phone: s
 const STATUS_COLORS: Record<string, string> = { new: colors.blue, contacted: colors.amber, qualified: colors.purple, converted: colors.green, lost: colors.red }
 
 export default function Leads() {
+  const router = useRouter()
   const [leads, setLeads] = useState<Lead[]>([])
   const [filtered, setFiltered] = useState<Lead[]>([])
   const [search, setSearch] = useState('')
@@ -36,7 +38,8 @@ export default function Leads() {
         <TextInput style={s.search} placeholder="Search name, email, phone…" placeholderTextColor={colors.slate500} value={search} onChangeText={setSearch} />
         <Text style={s.count}>{filtered.length} leads</Text>
         {filtered.map(lead => (
-          <Card key={lead.id} style={s.card}>
+          <TouchableOpacity key={lead.id} onPress={() => router.push(`/(app)/crm/leads/${lead.id}` as any)}>
+            <Card style={s.card}>
             <View style={s.row}>
               <Text style={s.leadName}>{lead.name ?? 'Unknown'}</Text>
               <View style={[s.badge, { backgroundColor: (STATUS_COLORS[lead.status] ?? colors.slate400) + '22' }]}>
@@ -49,7 +52,8 @@ export default function Leads() {
               {lead.source && <Text style={s.meta}>{lead.source}</Text>}
               <Text style={s.meta}>{new Date(lead.created_at).toLocaleDateString()}</Text>
             </View>
-          </Card>
+            </Card>
+          </TouchableOpacity>
         ))}
       </View>
     </ScrollView>

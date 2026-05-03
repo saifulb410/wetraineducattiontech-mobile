@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { TouchableOpacity } from 'react-native'
 import { Tabs, useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { useAuthContext } from '@/context/AuthContext'
@@ -25,6 +26,11 @@ export default function EducationLayout() {
         headerStyle: { backgroundColor: '#0a1628' },
         headerTintColor: '#D4AF37',
         headerTitleStyle: { fontWeight: 'bold' },
+        headerRight: () => (
+          <TouchableOpacity onPress={() => router.push('/(app)/modules' as any)} style={{ marginRight: 16 }}>
+            <Ionicons name="grid-outline" size={22} color="#D4AF37" />
+          </TouchableOpacity>
+        ),
       }}
     >
       <Tabs.Screen
@@ -39,6 +45,13 @@ export default function EducationLayout() {
         options={{
           title: 'Certificates',
           tabBarIcon: ({ color, size }) => <Ionicons name="ribbon-outline" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: 'Profile',
+          tabBarIcon: ({ color, size }) => <Ionicons name="person-outline" size={size} color={color} />,
         }}
       />
     </Tabs>

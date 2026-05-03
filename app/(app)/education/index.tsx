@@ -31,7 +31,7 @@ export default function EducationDashboard() {
     if (!user) return
     const [profileRes, ordersRes] = await Promise.all([
       supabase.from('profiles').select('full_name').eq('id', user.id).maybeSingle(),
-      supabase.from('orders').select('id,status,created_at,services(name)').eq('user_id', user.id).order('created_at', { ascending: false }).limit(5),
+      supabase.from('orders').select('id,status,created_at,services(name)').eq('user_id', user.id).order('created_at', { ascending: false }),
     ])
     setName(profileRes.data?.full_name ?? null)
     setOrders((ordersRes.data as Order[]) ?? [])
@@ -64,9 +64,13 @@ export default function EducationDashboard() {
             <Text style={s.statNum}>{orders.filter(o => o.status === 'completed').length}</Text>
             <Text style={s.statLabel}>Completed</Text>
           </Card>
+          <Card style={s.statCard}>
+            <Text style={s.statNum}>{orders.filter(o => o.status === 'pending').length}</Text>
+            <Text style={s.statLabel}>Pending</Text>
+          </Card>
         </View>
 
-        <Text style={s.sectionTitle}>Recent Enrollments</Text>
+        <Text style={s.sectionTitle}>All Enrollments</Text>
         {orders.length === 0
           ? <Card><Text style={s.empty}>No enrollments yet.</Text></Card>
           : orders.map(o => (

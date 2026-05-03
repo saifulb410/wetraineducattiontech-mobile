@@ -5,18 +5,19 @@ interface ButtonProps {
   title: string
   onPress: () => void
   loading?: boolean
-  variant?: 'primary' | 'secondary' | 'ghost'
+  variant?: 'primary' | 'secondary' | 'ghost' | 'outline'
   disabled?: boolean
 }
 
 export function Button({ title, onPress, loading, variant = 'primary', disabled }: ButtonProps) {
+  const isOutline = variant === 'secondary' || variant === 'outline'
   const bg = variant === 'primary' ? colors.gold : 'transparent'
-  const border = variant === 'secondary' ? colors.gold : 'transparent'
+  const border = isOutline ? colors.gold : 'transparent'
   const textColor = variant === 'primary' ? colors.navy : colors.gold
 
   return (
     <TouchableOpacity
-      style={[s.btn, { backgroundColor: bg, borderColor: border, borderWidth: variant === 'secondary' ? 1 : 0, opacity: disabled || loading ? 0.5 : 1 }]}
+      style={[s.btn, { backgroundColor: bg, borderColor: border, borderWidth: isOutline ? 1 : 0, opacity: disabled || loading ? 0.5 : 1 }]}
       onPress={onPress}
       disabled={disabled || loading}
       activeOpacity={0.8}
