@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { View, Text, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, ActivityIndicator } from 'react-native'
 import { useRouter } from 'expo-router'
 import * as WebBrowser from 'expo-web-browser'
-import { makeRedirectUri } from 'expo-auth-session'
+import * as Linking from 'expo-linking'
 import { Ionicons } from '@expo/vector-icons'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/Button'
@@ -58,7 +58,7 @@ export default function Register() {
   const handleGoogleRegister = async () => {
     try {
       setGoogleLoading(true)
-      const redirectUri = makeRedirectUri({ scheme: 'wetrainedu', path: 'auth' })
+      const redirectUri = Linking.createURL('auth')
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: { redirectTo: redirectUri, skipBrowserRedirect: true },
