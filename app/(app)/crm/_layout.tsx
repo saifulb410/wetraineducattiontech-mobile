@@ -54,6 +54,7 @@ export default function CrmLayout() {
           tabBarIcon: ({ color, size }) => <Ionicons name="person-add-outline" size={size} color={color} />,
         }}
       />
+      <Tabs.Screen name="leads/[id]" options={{ href: null }} />
     </Tabs>
   )
 }
