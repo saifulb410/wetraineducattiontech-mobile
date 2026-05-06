@@ -54,6 +54,12 @@ export default function EducationLayout() {
           tabBarIcon: ({ color, size }) => <Ionicons name="person-outline" size={size} color={color} />,
         }}
       />
+      {/* Admin sub-screens — hidden from tab bar */}
+      <Tabs.Screen name="customers"  options={{ href: null }} />
+      <Tabs.Screen name="payments"   options={{ href: null }} />
+      <Tabs.Screen name="orders"     options={{ href: null }} />
+      <Tabs.Screen name="services"   options={{ href: null }} />
+      <Tabs.Screen name="projects"   options={{ href: null }} />
     </Tabs>
   )
 }

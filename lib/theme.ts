@@ -6,6 +6,7 @@ export const colors = {
   slate300: '#cbd5e1',
   slate400: '#94a3b8',
   slate500: '#64748b',
+  slate600: '#475569',
   slate700: '#334155',
   green: '#22c55e',
   amber: '#f59e0b',
