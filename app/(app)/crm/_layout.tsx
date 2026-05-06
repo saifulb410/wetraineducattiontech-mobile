@@ -48,13 +48,23 @@ export default function CrmLayout() {
         }}
       />
       <Tabs.Screen
+        name="contact-logs"
+        options={{
+          title: 'Logs',
+          tabBarIcon: ({ color, size }) => <Ionicons name="chatbubbles-outline" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="add-lead"
         options={{
-          title: 'Add Lead',
+          title: 'Add',
           tabBarIcon: ({ color, size }) => <Ionicons name="person-add-outline" size={size} color={color} />,
         }}
       />
-      <Tabs.Screen name="leads/[id]" options={{ href: null }} />
+      {/* Hidden screens */}
+      <Tabs.Screen name="leads/[id]"     options={{ href: null }} />
+      <Tabs.Screen name="users"          options={{ href: null }} />
+      <Tabs.Screen name="lead-requests"  options={{ href: null }} />
     </Tabs>
   )
 }
