@@ -1,72 +1,124 @@
 import { useEffect, useRef } from 'react'
-import { View, Text, StyleSheet, TouchableOpacity, Animated, Dimensions, ScrollView } from 'react-native'
+import {
+  View, Text, StyleSheet, TouchableOpacity,
+  Animated, ScrollView, Dimensions, StatusBar,
+} from 'react-native'
 import { useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { colors } from '@/lib/theme'
 
 const { width } = Dimensions.get('window')
 
-const features = [
-  { icon: 'school-outline',      label: 'Education',  desc: 'Courses, orders & payments' },
-  { icon: 'people-outline',      label: 'CRM',         desc: 'Leads & sales pipeline'     },
-  { icon: 'bar-chart-outline',   label: 'HRM',         desc: 'KPI tracking & task reports' },
-  { icon: 'storefront-outline',  label: 'Store',       desc: 'Balance, invoices & ledger'  },
+const modules = [
+  {
+    icon: 'school-outline' as const,
+    title: 'Education',
+    desc: 'Enroll in courses, track your orders and payment history all in one place.',
+    color: colors.blue,
+    bg: '#1e3a5f',
+  },
+  {
+    icon: 'people-outline' as const,
+    title: 'CRM',
+    desc: 'Manage leads, track your sales pipeline, and close more deals faster.',
+    color: colors.purple,
+    bg: '#2d1f4e',
+  },
+  {
+    icon: 'bar-chart-outline' as const,
+    title: 'HRM & KPI',
+    desc: 'Weekly KPI tracking, task reports, and employee performance management.',
+    color: colors.amber,
+    bg: '#3d2a0a',
+  },
+  {
+    icon: 'storefront-outline' as const,
+    title: 'Store',
+    desc: 'View your balance, invoices, purchase history, and account ledger.',
+    color: colors.green,
+    bg: '#0d2e1a',
+  },
+]
+
+const stats = [
+  { value: '4+',   label: 'Modules'      },
+  { value: '100%', label: 'Cloud Based'  },
+  { value: '24/7', label: 'Access'       },
+  { value: '1',    label: 'Platform'     },
+]
+
+const whyUs = [
+  { icon: 'shield-checkmark-outline' as const, text: 'Secure & reliable infrastructure' },
+  { icon: 'flash-outline' as const,            text: 'Real-time data across all modules' },
+  { icon: 'phone-portrait-outline' as const,   text: 'Works on any device, anywhere'    },
+  { icon: 'people-circle-outline' as const,    text: 'Built for teams of all sizes'     },
 ]
 
 export default function Home() {
   const router = useRouter()
-
   const fadeAnim  = useRef(new Animated.Value(0)).current
-  const slideAnim = useRef(new Animated.Value(40)).current
-  const scaleAnim = useRef(new Animated.Value(0.85)).current
+  const slideAnim = useRef(new Animated.Value(30)).current
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(fadeAnim,  { toValue: 1, duration: 700, useNativeDriver: true }),
-      Animated.timing(slideAnim, { toValue: 0, duration: 700, useNativeDriver: true }),
-      Animated.spring(scaleAnim, { toValue: 1, tension: 60, friction: 8, useNativeDriver: true }),
+      Animated.timing(fadeAnim,  { toValue: 1, duration: 600, useNativeDriver: true }),
+      Animated.timing(slideAnim, { toValue: 0, duration: 600, useNativeDriver: true }),
     ]).start()
   }, [])
 
   return (
-    <ScrollView style={s.scroll} contentContainerStyle={s.content} bounces={false}>
-      {/* Background circles */}
-      <View style={s.circle1} />
-      <View style={s.circle2} />
+    <View style={s.root}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.navy} />
+      <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
 
-      <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }, { scale: scaleAnim }] }}>
+        {/* ── HERO ── */}
+        <View style={s.hero}>
+          <View style={s.heroBubble1} />
+          <View style={s.heroBubble2} />
 
-        {/* Logo */}
-        <View style={s.logoWrap}>
-          <View style={s.logoIcon}>
-            <Ionicons name="school" size={36} color={colors.gold} />
-          </View>
-        </View>
-
-        {/* Headline */}
-        <Text style={s.brand}>WeTrainEducationTech</Text>
-        <Text style={s.tagline}>All your business tools in one place</Text>
-
-        {/* Feature cards */}
-        <View style={s.featuresGrid}>
-          {features.map(({ icon, label, desc }) => (
-            <View key={label} style={s.featureCard}>
-              <View style={s.featureIconWrap}>
-                <Ionicons name={icon as any} size={22} color={colors.gold} />
+          <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+            {/* Nav */}
+            <View style={s.nav}>
+              <View style={s.logoRow}>
+                <View style={s.logoBox}>
+                  <Ionicons name="school" size={20} color={colors.gold} />
+                </View>
+                <Text style={s.logoText}>WeTrainEducationTech</Text>
               </View>
-              <Text style={s.featureLabel}>{label}</Text>
-              <Text style={s.featureDesc}>{desc}</Text>
+              <TouchableOpacity style={s.navLogin} onPress={() => router.push('/(auth)/login' as any)}>
+                <Text style={s.navLoginText}>Login</Text>
+              </TouchableOpacity>
             </View>
-          ))}
+
+            {/* Hero content */}
+            <View style={s.heroContent}>
+              <View style={s.heroBadge}>
+                <Ionicons name="star" size={12} color={colors.gold} />
+                <Text style={s.heroBadgeText}>All-in-one business platform</Text>
+              </View>
+              <Text style={s.heroTitle}>Grow Your Business{'\n'}
+                <Text style={s.heroTitleGold}>Smarter & Faster</Text>
+              </Text>
+              <Text style={s.heroSub}>
+                Education, CRM, HRM, and Store management — everything your team needs in one powerful app.
+              </Text>
+
+              <View style={s.heroButtons}>
+                <TouchableOpacity style={s.btnPrimary} onPress={() => router.push('/(auth)/register' as any)} activeOpacity={0.85}>
+                  <Text style={s.btnPrimaryText}>Get Started Free</Text>
+                  <Ionicons name="arrow-forward" size={16} color={colors.navy} />
+                </TouchableOpacity>
+                <TouchableOpacity style={s.btnOutline} onPress={() => router.push('/(auth)/login' as any)} activeOpacity={0.85}>
+                  <Text style={s.btnOutlineText}>Sign In</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Animated.View>
         </View>
 
-        {/* Stats row */}
-        <View style={s.statsRow}>
-          {[
-            { value: '4+', label: 'Modules' },
-            { value: '100%', label: 'Cloud' },
-            { value: '24/7', label: 'Access' },
-          ].map(({ value, label }) => (
+        {/* ── STATS ── */}
+        <View style={s.statsSection}>
+          {stats.map(({ value, label }) => (
             <View key={label} style={s.statItem}>
               <Text style={s.statValue}>{value}</Text>
               <Text style={s.statLabel}>{label}</Text>
@@ -74,59 +126,152 @@ export default function Home() {
           ))}
         </View>
 
-        {/* CTA Buttons */}
-        <View style={s.btnGroup}>
-          <TouchableOpacity style={s.btnPrimary} onPress={() => router.push('/(auth)/register' as any)} activeOpacity={0.85}>
-            <Text style={s.btnPrimaryText}>Get Started</Text>
-            <Ionicons name="arrow-forward" size={18} color={colors.navy} />
-          </TouchableOpacity>
+        {/* ── MODULES ── */}
+        <View style={s.section}>
+          <Text style={s.sectionBadge}>WHAT WE OFFER</Text>
+          <Text style={s.sectionTitle}>Everything Your Team Needs</Text>
+          <Text style={s.sectionSub}>Four powerful modules designed to run your entire business from one place.</Text>
 
-          <TouchableOpacity style={s.btnSecondary} onPress={() => router.push('/(auth)/login' as any)} activeOpacity={0.85}>
-            <Text style={s.btnSecondaryText}>Sign In</Text>
+          <View style={s.modulesGrid}>
+            {modules.map(({ icon, title, desc, color, bg }) => (
+              <View key={title} style={[s.moduleCard, { backgroundColor: bg }]}>
+                <View style={[s.moduleIconWrap, { borderColor: color + '40' }]}>
+                  <Ionicons name={icon} size={26} color={color} />
+                </View>
+                <Text style={s.moduleTitle}>{title}</Text>
+                <Text style={s.moduleDesc}>{desc}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {/* ── WHY US ── */}
+        <View style={[s.section, s.whySection]}>
+          <Text style={s.sectionBadge}>WHY CHOOSE US</Text>
+          <Text style={s.sectionTitle}>Built for Real Teams</Text>
+          <View style={s.whyList}>
+            {whyUs.map(({ icon, text }) => (
+              <View key={text} style={s.whyItem}>
+                <View style={s.whyIconWrap}>
+                  <Ionicons name={icon} size={20} color={colors.gold} />
+                </View>
+                <Text style={s.whyText}>{text}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {/* ── ABOUT ── */}
+        <View style={[s.section, { backgroundColor: colors.navyLight }]}>
+          <Text style={s.sectionBadge}>ABOUT US</Text>
+          <Text style={s.sectionTitle}>WeTrainEducationTech</Text>
+          <Text style={s.aboutText}>
+            We are a team dedicated to building tools that help businesses grow. Our platform brings together education management, customer relations, HR performance, and store operations under one roof — so your team spends less time switching between apps and more time doing what matters.
+          </Text>
+          <View style={s.aboutHighlight}>
+            <Ionicons name="location-outline" size={14} color={colors.gold} />
+            <Text style={s.aboutHighlightText}>Trusted by teams across Bangladesh</Text>
+          </View>
+        </View>
+
+        {/* ── CTA BANNER ── */}
+        <View style={s.ctaBanner}>
+          <View style={s.ctaBubble} />
+          <Text style={s.ctaTitle}>Ready to Get Started?</Text>
+          <Text style={s.ctaSub}>Create your account in seconds. No credit card required.</Text>
+          <TouchableOpacity style={s.ctaBtn} onPress={() => router.push('/(auth)/register' as any)} activeOpacity={0.85}>
+            <Text style={s.ctaBtnText}>Create Free Account</Text>
+            <Ionicons name="arrow-forward" size={16} color={colors.navy} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push('/(auth)/login' as any)} style={{ marginTop: 14 }}>
+            <Text style={s.ctaLoginText}>Already have an account? <Text style={{ color: colors.gold, fontWeight: '700' }}>Sign In</Text></Text>
           </TouchableOpacity>
         </View>
 
-        <Text style={s.footer}>Secure · Reliable · Built for teams</Text>
-      </Animated.View>
-    </ScrollView>
+        {/* ── FOOTER ── */}
+        <View style={s.footer}>
+          <Text style={s.footerLogo}>WeTrainEducationTech</Text>
+          <Text style={s.footerSub}>© {new Date().getFullYear()} All rights reserved.</Text>
+          <Text style={s.footerTagline}>Education · CRM · HRM · Store</Text>
+        </View>
+
+      </ScrollView>
+    </View>
   )
 }
 
+const GOLD = colors.gold
+
 const s = StyleSheet.create({
-  scroll: { flex: 1, backgroundColor: colors.navy },
-  content: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 80, paddingBottom: 48 },
+  root: { flex: 1, backgroundColor: colors.navy },
 
-  // Background decoration
-  circle1: { position: 'absolute', top: -100, right: -100, width: 300, height: 300, borderRadius: 150, backgroundColor: colors.gold + '0C' },
-  circle2: { position: 'absolute', bottom: 100, left: -80, width: 220, height: 220, borderRadius: 110, backgroundColor: colors.blue + '0A' },
+  // HERO
+  hero: { backgroundColor: colors.navy, paddingBottom: 32, overflow: 'hidden' },
+  heroBubble1: { position: 'absolute', top: -80, right: -80, width: 260, height: 260, borderRadius: 130, backgroundColor: GOLD + '0C' },
+  heroBubble2: { position: 'absolute', top: 160, left: -60, width: 180, height: 180, borderRadius: 90, backgroundColor: colors.blue + '0A' },
 
-  // Logo
-  logoWrap: { alignItems: 'center', marginBottom: 20 },
-  logoIcon: { width: 80, height: 80, borderRadius: 24, backgroundColor: colors.gold + '18', borderWidth: 1.5, borderColor: colors.gold + '40', alignItems: 'center', justifyContent: 'center' },
+  nav: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 52, paddingBottom: 12 },
+  logoRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
+  logoBox: { width: 34, height: 34, borderRadius: 10, backgroundColor: GOLD + '20', borderWidth: 1, borderColor: GOLD + '40', alignItems: 'center', justifyContent: 'center' },
+  logoText: { color: colors.white, fontWeight: '800', fontSize: 13, flex: 1 },
+  navLogin: { backgroundColor: GOLD + '18', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 7, borderWidth: 1, borderColor: GOLD + '40' },
+  navLoginText: { color: GOLD, fontWeight: '700', fontSize: 13 },
 
-  // Text
-  brand: { color: colors.white, fontSize: 26, fontWeight: '800', textAlign: 'center', marginBottom: 8, letterSpacing: 0.3 },
-  tagline: { color: colors.slate400, fontSize: 15, textAlign: 'center', marginBottom: 36 },
+  heroContent: { paddingHorizontal: 20, paddingTop: 24 },
+  heroBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: GOLD + '15', borderRadius: 20, alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6, marginBottom: 20, borderWidth: 1, borderColor: GOLD + '30' },
+  heroBadgeText: { color: GOLD, fontSize: 12, fontWeight: '600' },
+  heroTitle: { color: colors.white, fontSize: 32, fontWeight: '800', lineHeight: 40, marginBottom: 14 },
+  heroTitleGold: { color: GOLD },
+  heroSub: { color: colors.slate400, fontSize: 15, lineHeight: 24, marginBottom: 28 },
+  heroButtons: { flexDirection: 'row', gap: 12 },
+  btnPrimary: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: GOLD, borderRadius: 12, paddingVertical: 14 },
+  btnPrimaryText: { color: colors.navy, fontWeight: '800', fontSize: 15 },
+  btnOutline: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent', borderRadius: 12, paddingVertical: 14, borderWidth: 1.5, borderColor: colors.slate700 },
+  btnOutlineText: { color: colors.white, fontWeight: '700', fontSize: 15 },
 
-  // Features grid
-  featuresGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 28 },
-  featureCard: { width: (width - 60) / 2, backgroundColor: colors.navyLight, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.slate700 + '80' },
-  featureIconWrap: { width: 40, height: 40, borderRadius: 12, backgroundColor: colors.gold + '15', alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
-  featureLabel: { color: colors.white, fontWeight: '700', fontSize: 14, marginBottom: 4 },
-  featureDesc: { color: colors.slate400, fontSize: 12, lineHeight: 17 },
+  // STATS
+  statsSection: { flexDirection: 'row', backgroundColor: GOLD + '12', borderTopWidth: 1, borderBottomWidth: 1, borderColor: GOLD + '25', paddingVertical: 18 },
+  statItem: { flex: 1, alignItems: 'center' },
+  statValue: { color: GOLD, fontSize: 22, fontWeight: '800' },
+  statLabel: { color: colors.slate400, fontSize: 11, marginTop: 2 },
 
-  // Stats
-  statsRow: { flexDirection: 'row', justifyContent: 'space-around', backgroundColor: colors.navyLight, borderRadius: 16, paddingVertical: 18, marginBottom: 32, borderWidth: 1, borderColor: colors.slate700 + '60' },
-  statItem: { alignItems: 'center' },
-  statValue: { color: colors.gold, fontSize: 22, fontWeight: '800', marginBottom: 2 },
-  statLabel: { color: colors.slate400, fontSize: 12 },
+  // SECTIONS
+  section: { paddingHorizontal: 20, paddingVertical: 36 },
+  sectionBadge: { color: GOLD, fontSize: 11, fontWeight: '700', letterSpacing: 1.5, marginBottom: 8 },
+  sectionTitle: { color: colors.white, fontSize: 24, fontWeight: '800', marginBottom: 10, lineHeight: 32 },
+  sectionSub: { color: colors.slate400, fontSize: 14, lineHeight: 22, marginBottom: 24 },
 
-  // Buttons
-  btnGroup: { gap: 12, marginBottom: 24 },
-  btnPrimary: { backgroundColor: colors.gold, borderRadius: 14, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  btnPrimaryText: { color: colors.navy, fontWeight: '800', fontSize: 16 },
-  btnSecondary: { backgroundColor: colors.navyLight, borderRadius: 14, paddingVertical: 16, alignItems: 'center', borderWidth: 1.5, borderColor: colors.slate700 },
-  btnSecondaryText: { color: colors.white, fontWeight: '700', fontSize: 16 },
+  // MODULES
+  modulesGrid: { gap: 14 },
+  moduleCard: { borderRadius: 16, padding: 18, borderWidth: 1, borderColor: colors.slate700 + '60' },
+  moduleIconWrap: { width: 48, height: 48, borderRadius: 14, backgroundColor: colors.navy + 'AA', borderWidth: 1, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  moduleTitle: { color: colors.white, fontWeight: '700', fontSize: 17, marginBottom: 6 },
+  moduleDesc: { color: colors.slate400, fontSize: 13, lineHeight: 20 },
 
-  footer: { color: colors.slate500, fontSize: 12, textAlign: 'center' },
+  // WHY US
+  whySection: { backgroundColor: colors.navyLight },
+  whyList: { gap: 14 },
+  whyItem: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: colors.navy, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: colors.slate700 + '60' },
+  whyIconWrap: { width: 40, height: 40, borderRadius: 12, backgroundColor: GOLD + '15', alignItems: 'center', justifyContent: 'center' },
+  whyText: { color: colors.slate300, fontSize: 14, fontWeight: '500', flex: 1 },
+
+  // ABOUT
+  aboutText: { color: colors.slate400, fontSize: 14, lineHeight: 24, marginBottom: 16 },
+  aboutHighlight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  aboutHighlightText: { color: GOLD, fontSize: 13, fontWeight: '600' },
+
+  // CTA
+  ctaBanner: { backgroundColor: colors.navyLight, margin: 16, borderRadius: 20, padding: 28, alignItems: 'center', borderWidth: 1, borderColor: GOLD + '30', overflow: 'hidden' },
+  ctaBubble: { position: 'absolute', top: -60, right: -60, width: 180, height: 180, borderRadius: 90, backgroundColor: GOLD + '08' },
+  ctaTitle: { color: colors.white, fontSize: 22, fontWeight: '800', textAlign: 'center', marginBottom: 8 },
+  ctaSub: { color: colors.slate400, fontSize: 13, textAlign: 'center', marginBottom: 22, lineHeight: 20 },
+  ctaBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: GOLD, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 28 },
+  ctaBtnText: { color: colors.navy, fontWeight: '800', fontSize: 15 },
+  ctaLoginText: { color: colors.slate400, fontSize: 13 },
+
+  // FOOTER
+  footer: { alignItems: 'center', paddingVertical: 28, paddingHorizontal: 20, borderTopWidth: 1, borderTopColor: colors.slate700 + '60' },
+  footerLogo: { color: GOLD, fontWeight: '800', fontSize: 14, marginBottom: 4 },
+  footerSub: { color: colors.slate500, fontSize: 12, marginBottom: 4 },
+  footerTagline: { color: colors.slate700, fontSize: 11 },
 })

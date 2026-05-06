@@ -17,14 +17,23 @@ function RootLayoutNav() {
   useEffect(() => {
     if (loading) return
     SplashScreen.hideAsync()
+
     const inAuth = segments[0] === '(auth)'
-    const inHome = segments.length === 0 || segments[0] === 'index'
-    if (!session && !inAuth && !inHome) {
-      router.replace('/(auth)/login')
-    } else if (session && (inAuth || inHome)) {
+    const inApp  = segments[0] === '(app)'
+
+    // Logged-in user on auth screen → send to their module
+    if (session && inAuth) {
       const mod = roles ? getPrimaryModule(roles) : null
       router.replace(mod ? `/(app)/${mod}` as any : '/unauthorized')
+      return
     }
+
+    // Logged-out user trying to access a protected module → send to login
+    if (!session && inApp) {
+      router.replace('/(auth)/login')
+    }
+
+    // All other cases (home page, unauthorized screen) → do nothing, let render naturally
   }, [session, loading, roles, segments])
 
   useEffect(() => {
@@ -46,6 +55,7 @@ function RootLayoutNav() {
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="index" />
       <Stack.Screen name="(auth)" />
       <Stack.Screen name="(app)" />
       <Stack.Screen name="unauthorized" />
