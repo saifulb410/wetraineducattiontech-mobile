@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { View, Text, ScrollView, RefreshControl, StyleSheet, TouchableOpacity } from 'react-native'
+import { View, Text, ScrollView, RefreshControl, StyleSheet, TouchableOpacity, Alert } from 'react-native'
 import { useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { supabase } from '@/lib/supabase'
@@ -18,6 +18,7 @@ interface KpiSubmission { id: string; subject_id: string; submitted_at: string }
 const adminSections = [
   { label: 'Employees',       icon: 'people-circle-outline', color: colors.blue,   route: '/(app)/hrm/employees' },
   { label: 'Week Management', icon: 'calendar-outline',      color: colors.amber,  route: '/(app)/hrm/weeks'     },
+  { label: 'KPI Subjects',    icon: 'list-outline',          color: colors.purple, route: null                   },
 ] as const
 
 export default function HrmDashboard() {
@@ -182,7 +183,7 @@ export default function HrmDashboard() {
                 <TouchableOpacity
                   key={sec.label}
                   style={s.adminCard}
-                  onPress={() => router.push(sec.route as any)}
+                  onPress={() => sec.route ? router.push(sec.route as any) : Alert.alert('Coming Soon', 'KPI Subjects are managed from the web admin panel.')}
                   activeOpacity={0.75}
                 >
                   <View style={[s.adminIcon, { backgroundColor: sec.color + '22', borderColor: sec.color + '40' }]}>
