@@ -1,0 +1,206 @@
+import { useEffect, useState } from 'react'
+import {
+  View, Text, ScrollView, TextInput, Alert,
+  RefreshControl, StyleSheet, TouchableOpacity,
+} from 'react-native'
+import { useRouter } from 'expo-router'
+import { Ionicons } from '@expo/vector-icons'
+import { supabase } from '@/lib/supabase'
+import { useAuthContext } from '@/context/AuthContext'
+import { Card } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import { LoadingScreen } from '@/components/ui/LoadingScreen'
+import { colors } from '@/lib/theme'
+
+interface Week { id: string; label: string | null; start_date: string; end_date: string; is_locked: boolean }
+
+export default function HrmWeeks() {
+  const router = useRouter()
+  const { roles } = useAuthContext()
+  const isAdmin = roles?.hrmRole === 'SUPER_ADMIN' || roles?.hrmRole === 'ADMIN'
+
+  const [weeks, setWeeks] = useState<Week[]>([])
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [toggling, setToggling] = useState<string | null>(null)
+  const [showAdd, setShowAdd] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState({ label: '', start_date: '', end_date: '' })
+
+  const fetchWeeks = async () => {
+    const { data } = await supabase
+      .from('hrm_weeks')
+      .select('id,label,start_date,end_date,is_locked')
+      .order('start_date', { ascending: false })
+    setWeeks((data as Week[]) ?? [])
+    setLoading(false)
+    setRefreshing(false)
+  }
+
+  useEffect(() => { fetchWeeks() }, [])
+  const onRefresh = () => { setRefreshing(true); fetchWeeks() }
+
+  const toggleLock = async (w: Week) => {
+    setToggling(w.id)
+    const { error } = await supabase.from('hrm_weeks').update({ is_locked: !w.is_locked }).eq('id', w.id)
+    setToggling(null)
+    if (error) Alert.alert('Error', error.message)
+    else setWeeks(prev => prev.map(x => x.id === w.id ? { ...x, is_locked: !w.is_locked } : x))
+  }
+
+  const handleAdd = async () => {
+    if (!form.start_date.trim() || !form.end_date.trim()) {
+      Alert.alert('Error', 'Start and end date are required (YYYY-MM-DD format).')
+      return
+    }
+    setSaving(true)
+    const { error } = await supabase.from('hrm_weeks').insert({
+      label: form.label.trim() || null,
+      start_date: form.start_date.trim(),
+      end_date: form.end_date.trim(),
+      is_locked: false,
+    })
+    setSaving(false)
+    if (error) Alert.alert('Error', error.message)
+    else {
+      setShowAdd(false)
+      setForm({ label: '', start_date: '', end_date: '' })
+      fetchWeeks()
+    }
+  }
+
+  if (!isAdmin) {
+    return (
+      <View style={s.center}>
+        <Ionicons name="lock-closed-outline" size={48} color={colors.gold} />
+        <Text style={s.noAccess}>Admin access required.</Text>
+      </View>
+    )
+  }
+
+  if (loading) return <LoadingScreen />
+
+  return (
+    <ScrollView style={s.scroll} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.gold} />}>
+      <View style={s.container}>
+        <View style={s.headerRow}>
+          <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
+            <Ionicons name="chevron-back" size={24} color={colors.gold} />
+          </TouchableOpacity>
+          <View style={{ flex: 1 }}>
+            <Text style={s.pageTitle}>Week Management</Text>
+            <Text style={s.pageSub}>{weeks.length} weeks configured</Text>
+          </View>
+          <TouchableOpacity style={s.addBtn} onPress={() => setShowAdd(v => !v)}>
+            <Ionicons name={showAdd ? 'close' : 'add'} size={22} color={colors.navy} />
+          </TouchableOpacity>
+        </View>
+
+        {showAdd && (
+          <Card style={s.addForm}>
+            <Text style={s.formTitle}>Create New Week</Text>
+
+            <Text style={s.label}>Label (optional)</Text>
+            <TextInput
+              style={s.input}
+              placeholder="e.g. Week 1 – May 2026"
+              placeholderTextColor={colors.slate500}
+              value={form.label}
+              onChangeText={v => setForm(f => ({ ...f, label: v }))}
+            />
+
+            <Text style={s.label}>Start Date *</Text>
+            <TextInput
+              style={s.input}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor={colors.slate500}
+              value={form.start_date}
+              onChangeText={v => setForm(f => ({ ...f, start_date: v }))}
+            />
+
+            <Text style={s.label}>End Date *</Text>
+            <TextInput
+              style={s.input}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor={colors.slate500}
+              value={form.end_date}
+              onChangeText={v => setForm(f => ({ ...f, end_date: v }))}
+            />
+
+            <View style={s.formBtns}>
+              <TouchableOpacity style={s.cancelBtn} onPress={() => setShowAdd(false)}>
+                <Text style={s.cancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <Button title="Create Week" onPress={handleAdd} loading={saving} />
+            </View>
+          </Card>
+        )}
+
+        {weeks.length === 0 ? (
+          <Card style={s.emptyCard}>
+            <Ionicons name="calendar-outline" size={40} color={colors.slate600} />
+            <Text style={s.emptyText}>No weeks created yet</Text>
+            <Text style={s.emptyHint}>Tap + above to create the first week</Text>
+          </Card>
+        ) : (
+          weeks.map(w => {
+            const isLocked = w.is_locked
+            const start = new Date(w.start_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' })
+            const end = new Date(w.end_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' })
+            return (
+              <Card key={w.id} style={s.weekCard}>
+                <View style={s.weekTop}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.weekLabel}>{w.label ?? 'Unlabeled Week'}</Text>
+                    <Text style={s.weekDates}>{start} — {end}</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={[s.lockBtn, {
+                      backgroundColor: isLocked ? colors.red + '22' : colors.green + '22',
+                      borderColor: isLocked ? colors.red + '44' : colors.green + '44',
+                    }]}
+                    onPress={() => toggleLock(w)}
+                    disabled={toggling === w.id}
+                  >
+                    <Ionicons name={isLocked ? 'lock-closed' : 'lock-open'} size={14} color={isLocked ? colors.red : colors.green} />
+                    <Text style={[s.lockText, { color: isLocked ? colors.red : colors.green }]}>
+                      {toggling === w.id ? '...' : isLocked ? 'Locked' : 'Open'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </Card>
+            )
+          })
+        )}
+      </View>
+    </ScrollView>
+  )
+}
+
+const s = StyleSheet.create({
+  scroll: { flex: 1, backgroundColor: colors.navy },
+  container: { padding: 16, paddingBottom: 40 },
+  center: { flex: 1, backgroundColor: colors.navy, alignItems: 'center', justifyContent: 'center', padding: 32 },
+  noAccess: { color: colors.slate400, fontSize: 15, marginTop: 12, textAlign: 'center' },
+  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 20 },
+  backBtn: { padding: 4 },
+  pageTitle: { color: colors.white, fontSize: 20, fontWeight: 'bold' },
+  pageSub: { color: colors.slate400, fontSize: 12, marginTop: 2 },
+  addBtn: { backgroundColor: colors.gold, borderRadius: 10, padding: 8 },
+  addForm: { marginBottom: 16 },
+  formTitle: { color: colors.white, fontWeight: '700', fontSize: 16, marginBottom: 14 },
+  label: { color: colors.slate300, fontSize: 13, fontWeight: '600', marginBottom: 6 },
+  input: { backgroundColor: colors.navy, color: colors.white, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, borderWidth: 1, borderColor: colors.slate700, fontSize: 15, marginBottom: 14 },
+  formBtns: { flexDirection: 'row', gap: 10, alignItems: 'center' },
+  cancelBtn: { flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 10, borderWidth: 1, borderColor: colors.slate700 },
+  cancelText: { color: colors.slate400, fontWeight: '600' },
+  weekCard: { marginBottom: 10 },
+  weekTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  weekLabel: { color: colors.white, fontWeight: '700', fontSize: 14, marginBottom: 4 },
+  weekDates: { color: colors.slate400, fontSize: 12 },
+  lockBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1 },
+  lockText: { fontSize: 12, fontWeight: '700' },
+  emptyCard: { alignItems: 'center', paddingVertical: 40, gap: 8 },
+  emptyText: { color: colors.slate400, fontSize: 14 },
+  emptyHint: { color: colors.slate600, fontSize: 12 },
+})

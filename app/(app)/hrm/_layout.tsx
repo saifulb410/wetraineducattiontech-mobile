@@ -41,12 +41,22 @@ export default function HrmLayout() {
         }}
       />
       <Tabs.Screen
+        name="kpi"
+        options={{
+          title: 'KPI',
+          tabBarIcon: ({ color, size }) => <Ionicons name="bar-chart-outline" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="tasks"
         options={{
           title: 'Tasks',
           tabBarIcon: ({ color, size }) => <Ionicons name="checkmark-circle-outline" size={size} color={color} />,
         }}
       />
+      {/* Hidden admin screens */}
+      <Tabs.Screen name="employees" options={{ href: null }} />
+      <Tabs.Screen name="weeks"     options={{ href: null }} />
     </Tabs>
   )
 }
