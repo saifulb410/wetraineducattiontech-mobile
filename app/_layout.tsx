@@ -18,9 +18,10 @@ function RootLayoutNav() {
     if (loading) return
     SplashScreen.hideAsync()
     const inAuth = segments[0] === '(auth)'
-    if (!session && !inAuth) {
+    const inHome = segments.length === 0 || segments[0] === 'index'
+    if (!session && !inAuth && !inHome) {
       router.replace('/(auth)/login')
-    } else if (session && inAuth) {
+    } else if (session && (inAuth || inHome)) {
       const mod = roles ? getPrimaryModule(roles) : null
       router.replace(mod ? `/(app)/${mod}` as any : '/unauthorized')
     }
