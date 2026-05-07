@@ -54,6 +54,12 @@ export default function StoreLayout() {
           tabBarIcon: ({ color, size }) => <Ionicons name="book-outline" size={size} color={color} />,
         }}
       />
+      {/* Hidden screens - navigated to from dashboard */}
+      <Tabs.Screen name="create-invoice" options={{ href: null, title: 'Shop' }} />
+      <Tabs.Screen name="account" options={{ href: null, title: 'My Account' }} />
+      <Tabs.Screen name="products" options={{ href: null, title: 'Products' }} />
+      <Tabs.Screen name="stocks" options={{ href: null, title: 'Stock Management' }} />
+      <Tabs.Screen name="accounts-admin" options={{ href: null, title: 'Employee Accounts' }} />
     </Tabs>
   )
 }
