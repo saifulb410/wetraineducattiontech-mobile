@@ -45,6 +45,15 @@ export default function StoreLayout() {
         options={{
           title: 'Invoices',
           tabBarIcon: ({ color, size }) => <Ionicons name="receipt-outline" size={size} color={color} />,
+          headerRight: () => (
+            <TouchableOpacity
+              onPress={() => router.push('/(app)/store/create-invoice' as any)}
+              style={{ marginRight: 16, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#D4AF3722', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 }}
+            >
+              <Ionicons name="add" size={18} color="#D4AF37" />
+              <Ionicons name="barcode-outline" size={18} color="#D4AF37" />
+            </TouchableOpacity>
+          ),
         }}
       />
       <Tabs.Screen

@@ -20,14 +20,23 @@ export function useAuth() {
   })
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (session) {
-        const roles = await getCurrentUserWithRoles().catch(() => null)
-        setState({ loading: false, session, user: session.user, roles })
-      } else {
-        setState({ loading: false, session: null, user: null, roles: null })
-      }
-    })
+    const done = (session: any, roles: any = null) =>
+      setState({ loading: false, session, user: session?.user ?? null, roles })
+
+    // Safety timeout — never leave loading stuck
+    const timeout = setTimeout(() => done(null), 8000)
+
+    supabase.auth.getSession()
+      .then(async ({ data: { session } }) => {
+        clearTimeout(timeout)
+        if (session) {
+          const roles = await getCurrentUserWithRoles().catch(() => null)
+          done(session, roles)
+        } else {
+          done(null)
+        }
+      })
+      .catch(() => { clearTimeout(timeout); done(null) })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
