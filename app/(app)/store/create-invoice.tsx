@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import {
   View, Text, ScrollView, TextInput, Alert,
-  StyleSheet, TouchableOpacity,
+  StyleSheet, TouchableOpacity, Modal,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
+import { CameraView, useCameraPermissions } from 'expo-camera'
 import { supabase } from '@/lib/supabase'
 import { useAuthContext } from '@/context/AuthContext'
 import { Card } from '@/components/ui/Card'
@@ -24,12 +25,16 @@ interface CartItem { product: Product; qty: number }
 
 export default function CreateInvoice() {
   const { user } = useAuthContext()
+  const [permission, requestPermission] = useCameraPermissions()
 
   const [products, setProducts] = useState<Product[]>([])
   const [search, setSearch] = useState('')
   const [cart, setCart] = useState<Record<string, CartItem>>({})
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
+  const [scannerOpen, setScannerOpen] = useState(false)
+  const [scanned, setScanned] = useState(false)
+  const [scanFeedback, setScanFeedback] = useState<{ text: string; success: boolean } | null>(null)
 
   const fetchProducts = async () => {
     const { data } = await supabase
@@ -71,13 +76,49 @@ export default function CreateInvoice() {
     })
   }
 
+  const openScanner = async () => {
+    if (!permission?.granted) {
+      const result = await requestPermission()
+      if (!result.granted) {
+        Alert.alert('Permission Denied', 'Camera access is required to scan barcodes.')
+        return
+      }
+    }
+    setScanned(false)
+    setScanFeedback(null)
+    setScannerOpen(true)
+  }
+
+  const handleBarcodeScan = ({ data: barcodeData }: { data: string }) => {
+    if (scanned) return
+    setScanned(true)
+
+    const match = products.find(p => p.barcode === barcodeData)
+    if (match) {
+      const onHand = (match.store_stocks as any)?.on_hand ?? 0
+      if (onHand === 0) {
+        setScanFeedback({ text: `"${match.name}" is out of stock`, success: false })
+      } else {
+        addToCart(match)
+        setScanFeedback({ text: `Added: ${match.name} (৳${match.price})`, success: true })
+      }
+    } else {
+      setScanFeedback({ text: `No product found for: ${barcodeData}`, success: false })
+    }
+
+    // Allow scanning again after 2s
+    setTimeout(() => {
+      setScanned(false)
+      setScanFeedback(null)
+    }, 2000)
+  }
+
   const handleSubmit = async () => {
     if (cartItems.length === 0) { Alert.alert('Empty Cart', 'Add items first.'); return }
     if (!user) return
 
     setSubmitting(true)
 
-    // Create invoice
     const { data: invoice, error: invErr } = await supabase
       .from('store_invoices')
       .insert({ user_id: user.id, amount: cartTotal, status: 'confirmed', confirmed_at: new Date().toISOString() })
@@ -90,7 +131,6 @@ export default function CreateInvoice() {
       return
     }
 
-    // Insert items
     await supabase.from('store_invoice_items').insert(
       cartItems.map(({ product, qty }) => ({
         invoice_id: invoice.id,
@@ -102,7 +142,6 @@ export default function CreateInvoice() {
       }))
     )
 
-    // Update account balance
     const { data: account } = await supabase
       .from('store_accounts')
       .select('balance')
@@ -116,7 +155,6 @@ export default function CreateInvoice() {
       await supabase.from('store_accounts').insert({ user_id: user.id, balance: newBalance })
     }
 
-    // Add ledger entry
     await supabase.from('store_ledger').insert({
       user_id: user.id,
       type: 'purchase',
@@ -136,21 +174,27 @@ export default function CreateInvoice() {
 
   return (
     <View style={s.root}>
-      {/* Search bar */}
-      <View style={s.searchBar}>
-        <Ionicons name="search-outline" size={16} color={colors.slate400} />
-        <TextInput
-          style={s.searchInput}
-          placeholder="Search products or barcode..."
-          placeholderTextColor={colors.slate500}
-          value={search}
-          onChangeText={setSearch}
-        />
-        {search ? (
-          <TouchableOpacity onPress={() => setSearch('')}>
-            <Ionicons name="close-circle" size={16} color={colors.slate400} />
-          </TouchableOpacity>
-        ) : null}
+      {/* Search + Scan bar */}
+      <View style={s.topBar}>
+        <View style={s.searchBar}>
+          <Ionicons name="search-outline" size={16} color={colors.slate400} />
+          <TextInput
+            style={s.searchInput}
+            placeholder="Search products or barcode..."
+            placeholderTextColor={colors.slate500}
+            value={search}
+            onChangeText={setSearch}
+          />
+          {search ? (
+            <TouchableOpacity onPress={() => setSearch('')}>
+              <Ionicons name="close-circle" size={16} color={colors.slate400} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+        <TouchableOpacity style={s.scanBtn} onPress={openScanner} activeOpacity={0.8}>
+          <Ionicons name="barcode-outline" size={20} color={colors.navy} />
+          <Text style={s.scanBtnText}>Scan</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Product list */}
@@ -221,14 +265,80 @@ export default function CreateInvoice() {
           />
         </View>
       )}
+
+      {/* Barcode Scanner Modal */}
+      <Modal visible={scannerOpen} animationType="slide" onRequestClose={() => setScannerOpen(false)}>
+        <View style={s.scanRoot}>
+          {/* Header */}
+          <View style={s.scanHeader}>
+            <Text style={s.scanTitle}>Scan Barcode</Text>
+            <TouchableOpacity style={s.scanClose} onPress={() => setScannerOpen(false)}>
+              <Ionicons name="close" size={24} color={colors.white} />
+            </TouchableOpacity>
+          </View>
+
+          {/* Camera */}
+          <CameraView
+            style={s.camera}
+            facing="back"
+            onBarcodeScanned={scanned ? undefined : handleBarcodeScan}
+            barcodeScannerSettings={{ barcodeTypes: ['ean13', 'ean8', 'code128', 'code39', 'qr', 'upc_a', 'upc_e'] }}
+          >
+            {/* Viewfinder overlay */}
+            <View style={s.overlay}>
+              <View style={s.overlayTop} />
+              <View style={s.overlayMiddle}>
+                <View style={s.overlaySide} />
+                <View style={s.viewfinder}>
+                  {/* Corner brackets */}
+                  <View style={[s.corner, s.cornerTL]} />
+                  <View style={[s.corner, s.cornerTR]} />
+                  <View style={[s.corner, s.cornerBL]} />
+                  <View style={[s.corner, s.cornerBR]} />
+                  {/* Scan line */}
+                  <View style={s.scanLine} />
+                </View>
+                <View style={s.overlaySide} />
+              </View>
+              <View style={s.overlayBottom}>
+                {scanFeedback ? (
+                  <View style={[s.feedbackBox, { backgroundColor: scanFeedback.success ? colors.green + 'DD' : colors.red + 'DD' }]}>
+                    <Ionicons name={scanFeedback.success ? 'checkmark-circle' : 'close-circle'} size={18} color={colors.white} />
+                    <Text style={s.feedbackText}>{scanFeedback.text}</Text>
+                  </View>
+                ) : (
+                  <Text style={s.scanHint}>Point camera at a barcode</Text>
+                )}
+              </View>
+            </View>
+          </CameraView>
+
+          {/* Cart summary while scanning */}
+          {cartCount > 0 && (
+            <View style={s.scanCartBar}>
+              <Ionicons name="cart-outline" size={18} color={colors.gold} />
+              <Text style={s.scanCartText}>{cartCount} item{cartCount > 1 ? 's' : ''} • ৳{cartTotal.toFixed(2)}</Text>
+              <TouchableOpacity style={s.scanDoneBtn} onPress={() => setScannerOpen(false)}>
+                <Text style={s.scanDoneText}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      </Modal>
     </View>
   )
 }
 
+const CORNER_SIZE = 24
+const CORNER_THICKNESS = 3
+
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.navy },
-  searchBar: { flexDirection: 'row', alignItems: 'center', gap: 8, margin: 12, backgroundColor: colors.navyLight, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: colors.slate700 },
+  topBar: { flexDirection: 'row', alignItems: 'center', gap: 8, margin: 12 },
+  searchBar: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.navyLight, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: colors.slate700 },
   searchInput: { flex: 1, color: colors.white, fontSize: 14 },
+  scanBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: colors.gold, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 11 },
+  scanBtnText: { color: colors.navy, fontSize: 13, fontWeight: '800' },
   scroll: { flex: 1 },
   listWrap: { paddingHorizontal: 12 },
   card: { marginBottom: 8, padding: 10 },
@@ -251,4 +361,29 @@ const s = StyleSheet.create({
   checkoutTotal: { color: colors.gold, fontWeight: '900', fontSize: 20 },
   empty: { alignItems: 'center', paddingVertical: 60, gap: 10 },
   emptyText: { color: colors.slate400, fontSize: 14 },
+  // Scanner
+  scanRoot: { flex: 1, backgroundColor: '#000' },
+  scanHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 56, paddingBottom: 12, backgroundColor: '#000' },
+  scanTitle: { color: colors.white, fontSize: 18, fontWeight: '700' },
+  scanClose: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#ffffff22', alignItems: 'center', justifyContent: 'center' },
+  camera: { flex: 1 },
+  overlay: { flex: 1 },
+  overlayTop: { flex: 1, backgroundColor: '#00000088' },
+  overlayMiddle: { flexDirection: 'row', height: 240 },
+  overlaySide: { flex: 1, backgroundColor: '#00000088' },
+  viewfinder: { width: 260, height: 240, position: 'relative' },
+  corner: { position: 'absolute', width: CORNER_SIZE, height: CORNER_SIZE, borderColor: colors.gold },
+  cornerTL: { top: 0, left: 0, borderTopWidth: CORNER_THICKNESS, borderLeftWidth: CORNER_THICKNESS },
+  cornerTR: { top: 0, right: 0, borderTopWidth: CORNER_THICKNESS, borderRightWidth: CORNER_THICKNESS },
+  cornerBL: { bottom: 0, left: 0, borderBottomWidth: CORNER_THICKNESS, borderLeftWidth: CORNER_THICKNESS },
+  cornerBR: { bottom: 0, right: 0, borderBottomWidth: CORNER_THICKNESS, borderRightWidth: CORNER_THICKNESS },
+  scanLine: { position: 'absolute', top: '50%', left: 8, right: 8, height: 2, backgroundColor: colors.gold + 'AA' },
+  overlayBottom: { flex: 1, backgroundColor: '#00000088', alignItems: 'center', justifyContent: 'flex-start', paddingTop: 24 },
+  scanHint: { color: '#ffffffaa', fontSize: 14 },
+  feedbackBox: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10 },
+  feedbackText: { color: colors.white, fontSize: 13, fontWeight: '600', flexShrink: 1 },
+  scanCartBar: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.navyLight, paddingHorizontal: 16, paddingVertical: 14, borderTopWidth: 1, borderTopColor: colors.slate700 },
+  scanCartText: { flex: 1, color: colors.white, fontSize: 14, fontWeight: '600' },
+  scanDoneBtn: { backgroundColor: colors.gold, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8 },
+  scanDoneText: { color: colors.navy, fontSize: 13, fontWeight: '800' },
 })

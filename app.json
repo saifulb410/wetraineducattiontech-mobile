@@ -49,6 +49,12 @@
         {
           "photosPermission": "Allow WeTrainEducationTech to access your photos to set a profile picture."
         }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow WeTrainEducationTech to use the camera to scan barcodes."
+        }
       ]
     ],
     "experiments": {
