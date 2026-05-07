@@ -195,7 +195,7 @@ export default function Products() {
 
       {/* Add/Edit Modal */}
       <Modal visible={showForm} animationType="slide" transparent>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={s.modalOverlay}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={s.modalOverlay}>
           <View style={s.modalSheet}>
             <View style={s.modalHeader}>
               <Text style={s.modalTitle}>{editTarget ? 'Edit Product' : 'Add Product'}</Text>
@@ -204,27 +204,29 @@ export default function Products() {
               </TouchableOpacity>
             </View>
 
-            <Text style={s.label}>Name *</Text>
-            <TextInput style={s.input} value={formName} onChangeText={setFormName} placeholder="Product name" placeholderTextColor={colors.slate500} />
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <Text style={s.label}>Name *</Text>
+              <TextInput style={s.input} value={formName} onChangeText={setFormName} placeholder="Product name" placeholderTextColor={colors.slate500} />
 
-            <Text style={s.label}>Price (৳) *</Text>
-            <TextInput style={s.input} value={formPrice} onChangeText={setFormPrice} placeholder="0.00" placeholderTextColor={colors.slate500} keyboardType="decimal-pad" />
+              <Text style={s.label}>Price (৳) *</Text>
+              <TextInput style={s.input} value={formPrice} onChangeText={setFormPrice} placeholder="0.00" placeholderTextColor={colors.slate500} keyboardType="decimal-pad" />
 
-            <Text style={s.label}>Barcode</Text>
-            <TextInput style={s.input} value={formBarcode} onChangeText={setFormBarcode} placeholder="Optional barcode" placeholderTextColor={colors.slate500} />
+              <Text style={s.label}>Barcode</Text>
+              <TextInput style={s.input} value={formBarcode} onChangeText={setFormBarcode} placeholder="Optional barcode" placeholderTextColor={colors.slate500} />
 
-            <Text style={s.label}>Status</Text>
-            <View style={s.statusRow}>
-              {(['active', 'inactive'] as const).map(st => (
-                <TouchableOpacity key={st} style={[s.statusChip, formStatus === st && s.statusChipActive]} onPress={() => setFormStatus(st)}>
-                  <Text style={[s.statusChipText, formStatus === st && s.statusChipTextActive]}>
-                    {st.charAt(0).toUpperCase() + st.slice(1)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+              <Text style={s.label}>Status</Text>
+              <View style={s.statusRow}>
+                {(['active', 'inactive'] as const).map(st => (
+                  <TouchableOpacity key={st} style={[s.statusChip, formStatus === st && s.statusChipActive]} onPress={() => setFormStatus(st)}>
+                    <Text style={[s.statusChipText, formStatus === st && s.statusChipTextActive]}>
+                      {st.charAt(0).toUpperCase() + st.slice(1)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
 
-            <Button title={saving ? 'Saving...' : 'Save Product'} onPress={handleSave} loading={saving} style={{ marginTop: 16 }} />
+              <Button title={saving ? 'Saving...' : 'Save Product'} onPress={handleSave} loading={saving} style={{ marginTop: 16, marginBottom: 8 }} />
+            </ScrollView>
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -258,7 +260,7 @@ const s = StyleSheet.create({
   empty: { alignItems: 'center', paddingVertical: 60, gap: 10 },
   emptyText: { color: colors.slate400, fontSize: 14 },
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: '#00000088' },
-  modalSheet: { backgroundColor: colors.navyLight, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 40 },
+  modalSheet: { backgroundColor: colors.navyLight, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 40, maxHeight: '90%' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   modalTitle: { color: colors.white, fontSize: 17, fontWeight: '700' },
   label: { color: colors.slate400, fontSize: 12, fontWeight: '600', marginBottom: 6, marginTop: 12 },
