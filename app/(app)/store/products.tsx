@@ -38,6 +38,7 @@ export default function Products() {
   const [formPrice, setFormPrice] = useState('')
   const [formBarcode, setFormBarcode] = useState('')
   const [formStatus, setFormStatus] = useState<'active' | 'inactive'>('active')
+  const [formQty, setFormQty] = useState('0')
   const [saving, setSaving] = useState(false)
   const [barcodeScanning, setBarcodeScanning] = useState(false)
   const [barcodeScanned, setBarcodeScanned] = useState(false)
@@ -74,7 +75,7 @@ export default function Products() {
 
   const openAdd = () => {
     setEditTarget(null)
-    setFormName(''); setFormPrice(''); setFormBarcode(''); setFormStatus('active')
+    setFormName(''); setFormPrice(''); setFormBarcode(''); setFormStatus('active'); setFormQty('0')
     setShowForm(true)
   }
 
@@ -84,6 +85,8 @@ export default function Products() {
     setFormPrice(String(p.price))
     setFormBarcode(p.barcode ?? '')
     setFormStatus(p.status as any)
+    const onHand = (p.store_stocks as any)?.on_hand ?? 0
+    setFormQty(String(onHand))
     setShowForm(true)
   }
 
@@ -92,15 +95,28 @@ export default function Products() {
     const price = parseFloat(formPrice)
     if (isNaN(price) || price < 0) { Alert.alert('Validation', 'Enter a valid price.'); return }
 
+    const qty = Math.max(0, parseInt(formQty) || 0)
+
     setSaving(true)
     if (editTarget) {
       await supabase.from('store_products').update({
         name: formName.trim(), price, barcode: formBarcode.trim() || null, status: formStatus,
       }).eq('id', editTarget.id)
+      // Update stock
+      const { data: existing } = await supabase.from('store_stocks').select('id').eq('product_id', editTarget.id).maybeSingle()
+      if (existing) {
+        await supabase.from('store_stocks').update({ on_hand: qty }).eq('product_id', editTarget.id)
+      } else {
+        await supabase.from('store_stocks').insert({ product_id: editTarget.id, on_hand: qty })
+      }
     } else {
-      await supabase.from('store_products').insert({
+      const { data: newProduct } = await supabase.from('store_products').insert({
         name: formName.trim(), price, barcode: formBarcode.trim() || null, status: formStatus,
-      })
+      }).select().single()
+      // Set initial stock
+      if (newProduct) {
+        await supabase.from('store_stocks').insert({ product_id: newProduct.id, on_hand: qty })
+      }
     }
     setSaving(false)
     setShowForm(false)
@@ -268,6 +284,29 @@ export default function Products() {
                 </TouchableOpacity>
               </View>
 
+              <Text style={s.label}>Initial Stock Quantity</Text>
+              <View style={s.qtyInputRow}>
+                <TouchableOpacity
+                  style={s.qtyCtrlBtn}
+                  onPress={() => setFormQty(q => String(Math.max(0, (parseInt(q) || 0) - 1)))}
+                >
+                  <Ionicons name="remove" size={18} color={colors.white} />
+                </TouchableOpacity>
+                <TextInput
+                  style={[s.input, s.qtyInput]}
+                  value={formQty}
+                  onChangeText={v => setFormQty(v.replace(/[^0-9]/g, ''))}
+                  keyboardType="number-pad"
+                  textAlign="center"
+                />
+                <TouchableOpacity
+                  style={[s.qtyCtrlBtn, { backgroundColor: colors.gold }]}
+                  onPress={() => setFormQty(q => String((parseInt(q) || 0) + 1))}
+                >
+                  <Ionicons name="add" size={18} color={colors.navy} />
+                </TouchableOpacity>
+              </View>
+
               <Text style={s.label}>Status</Text>
               <View style={s.statusRow}>
                 {(['active', 'inactive'] as const).map(st => (
@@ -367,6 +406,9 @@ const s = StyleSheet.create({
   input: { backgroundColor: colors.navy, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, color: colors.white, fontSize: 14, borderWidth: 1, borderColor: colors.slate700 },
   barcodeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   scanIconBtn: { width: 48, height: 48, borderRadius: 10, backgroundColor: colors.gold, alignItems: 'center', justifyContent: 'center' },
+  qtyInputRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  qtyCtrlBtn: { width: 44, height: 44, borderRadius: 10, backgroundColor: colors.slate700, alignItems: 'center', justifyContent: 'center' },
+  qtyInput: { flex: 1, fontSize: 18, fontWeight: '800', color: colors.white },
   statusRow: { flexDirection: 'row', gap: 10 },
   statusChip: { flex: 1, paddingVertical: 10, borderRadius: 10, backgroundColor: colors.navy, alignItems: 'center', borderWidth: 1, borderColor: colors.slate700 },
   statusChipActive: { backgroundColor: colors.gold, borderColor: colors.gold },
