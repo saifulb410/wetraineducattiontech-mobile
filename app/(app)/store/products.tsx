@@ -283,11 +283,11 @@ export default function Products() {
                 ))}
               </View>
 
+              <View style={{ height: 24 }} />
               <Button
                 title={saving ? 'Saving...' : 'Save Product'}
                 onPress={handleSave}
                 loading={saving}
-                style={{ marginTop: 20 }}
               />
             </ScrollView>
           </View>
