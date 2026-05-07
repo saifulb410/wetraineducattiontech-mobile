@@ -277,25 +277,24 @@ export default function CreateInvoice() {
             </TouchableOpacity>
           </View>
 
-          {/* Camera */}
-          <CameraView
-            style={s.camera}
-            facing="back"
-            onBarcodeScanned={scanned ? undefined : handleBarcodeScan}
-            barcodeScannerSettings={{ barcodeTypes: ['ean13', 'ean8', 'code128', 'code39', 'qr', 'upc_a', 'upc_e'] }}
-          >
-            {/* Viewfinder overlay */}
+          {/* Camera + overlay in a relative container */}
+          <View style={s.cameraContainer}>
+            <CameraView
+              style={StyleSheet.absoluteFill}
+              facing="back"
+              onBarcodeScanned={scanned ? undefined : handleBarcodeScan}
+              barcodeScannerSettings={{ barcodeTypes: ['ean13', 'ean8', 'code128', 'code39', 'qr', 'upc_a', 'upc_e'] }}
+            />
+            {/* Viewfinder overlay — absolutely positioned over camera */}
             <View style={s.overlay}>
               <View style={s.overlayTop} />
               <View style={s.overlayMiddle}>
                 <View style={s.overlaySide} />
                 <View style={s.viewfinder}>
-                  {/* Corner brackets */}
                   <View style={[s.corner, s.cornerTL]} />
                   <View style={[s.corner, s.cornerTR]} />
                   <View style={[s.corner, s.cornerBL]} />
                   <View style={[s.corner, s.cornerBR]} />
-                  {/* Scan line */}
                   <View style={s.scanLine} />
                 </View>
                 <View style={s.overlaySide} />
@@ -311,7 +310,7 @@ export default function CreateInvoice() {
                 )}
               </View>
             </View>
-          </CameraView>
+          </View>
 
           {/* Cart summary while scanning */}
           {cartCount > 0 && (
@@ -366,8 +365,8 @@ const s = StyleSheet.create({
   scanHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 56, paddingBottom: 12, backgroundColor: '#000' },
   scanTitle: { color: colors.white, fontSize: 18, fontWeight: '700' },
   scanClose: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#ffffff22', alignItems: 'center', justifyContent: 'center' },
-  camera: { flex: 1 },
-  overlay: { flex: 1 },
+  cameraContainer: { flex: 1 },
+  overlay: { ...StyleSheet.absoluteFillObject },
   overlayTop: { flex: 1, backgroundColor: '#00000088' },
   overlayMiddle: { flexDirection: 'row', height: 240 },
   overlaySide: { flex: 1, backgroundColor: '#00000088' },
