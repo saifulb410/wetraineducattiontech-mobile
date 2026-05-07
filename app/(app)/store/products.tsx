@@ -2,15 +2,18 @@ import { useEffect, useState } from 'react'
 import {
   View, Text, ScrollView, TextInput, Alert,
   RefreshControl, StyleSheet, TouchableOpacity, Modal,
-  KeyboardAvoidingView, Platform,
+  KeyboardAvoidingView, Platform, Dimensions,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
+import { CameraView, useCameraPermissions } from 'expo-camera'
 import { supabase } from '@/lib/supabase'
 import { useAuthContext } from '@/context/AuthContext'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { colors } from '@/lib/theme'
+
+const SCREEN_H = Dimensions.get('window').height
 
 interface Product {
   id: string
@@ -36,6 +39,25 @@ export default function Products() {
   const [formBarcode, setFormBarcode] = useState('')
   const [formStatus, setFormStatus] = useState<'active' | 'inactive'>('active')
   const [saving, setSaving] = useState(false)
+  const [barcodeScanning, setBarcodeScanning] = useState(false)
+  const [barcodeScanned, setBarcodeScanned] = useState(false)
+  const [permission, requestPermission] = useCameraPermissions()
+
+  const openBarcodeScanner = async () => {
+    if (!permission?.granted) {
+      const result = await requestPermission()
+      if (!result.granted) { Alert.alert('Permission Denied', 'Camera access is required.'); return }
+    }
+    setBarcodeScanned(false)
+    setBarcodeScanning(true)
+  }
+
+  const handleBarcodeScan = ({ data }: { data: string }) => {
+    if (barcodeScanned) return
+    setBarcodeScanned(true)
+    setFormBarcode(data)
+    setBarcodeScanning(false)
+  }
 
   const fetchProducts = async () => {
     const { data } = await supabase
@@ -193,10 +215,14 @@ export default function Products() {
         </View>
       </ScrollView>
 
-      {/* Add/Edit Modal */}
+      {/* Add/Edit Product Modal */}
       <Modal visible={showForm} animationType="slide" transparent>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={s.modalOverlay}>
-          <View style={s.modalSheet}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={s.modalOverlay}
+        >
+          <View style={[s.modalSheet, { maxHeight: SCREEN_H * 0.88 }]}>
+            {/* Header */}
             <View style={s.modalHeader}>
               <Text style={s.modalTitle}>{editTarget ? 'Edit Product' : 'Add Product'}</Text>
               <TouchableOpacity onPress={() => setShowForm(false)}>
@@ -204,20 +230,52 @@ export default function Products() {
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{ paddingBottom: 16 }}
+            >
               <Text style={s.label}>Name *</Text>
-              <TextInput style={s.input} value={formName} onChangeText={setFormName} placeholder="Product name" placeholderTextColor={colors.slate500} />
+              <TextInput
+                style={s.input}
+                value={formName}
+                onChangeText={setFormName}
+                placeholder="Product name"
+                placeholderTextColor={colors.slate500}
+              />
 
               <Text style={s.label}>Price (৳) *</Text>
-              <TextInput style={s.input} value={formPrice} onChangeText={setFormPrice} placeholder="0.00" placeholderTextColor={colors.slate500} keyboardType="decimal-pad" />
+              <TextInput
+                style={s.input}
+                value={formPrice}
+                onChangeText={setFormPrice}
+                placeholder="0.00"
+                placeholderTextColor={colors.slate500}
+                keyboardType="decimal-pad"
+              />
 
               <Text style={s.label}>Barcode</Text>
-              <TextInput style={s.input} value={formBarcode} onChangeText={setFormBarcode} placeholder="Optional barcode" placeholderTextColor={colors.slate500} />
+              <View style={s.barcodeRow}>
+                <TextInput
+                  style={[s.input, { flex: 1 }]}
+                  value={formBarcode}
+                  onChangeText={setFormBarcode}
+                  placeholder="Scan or type barcode"
+                  placeholderTextColor={colors.slate500}
+                />
+                <TouchableOpacity style={s.scanIconBtn} onPress={openBarcodeScanner}>
+                  <Ionicons name="barcode-outline" size={22} color={colors.navy} />
+                </TouchableOpacity>
+              </View>
 
               <Text style={s.label}>Status</Text>
               <View style={s.statusRow}>
                 {(['active', 'inactive'] as const).map(st => (
-                  <TouchableOpacity key={st} style={[s.statusChip, formStatus === st && s.statusChipActive]} onPress={() => setFormStatus(st)}>
+                  <TouchableOpacity
+                    key={st}
+                    style={[s.statusChip, formStatus === st && s.statusChipActive]}
+                    onPress={() => setFormStatus(st)}
+                  >
                     <Text style={[s.statusChipText, formStatus === st && s.statusChipTextActive]}>
                       {st.charAt(0).toUpperCase() + st.slice(1)}
                     </Text>
@@ -225,10 +283,52 @@ export default function Products() {
                 ))}
               </View>
 
-              <Button title={saving ? 'Saving...' : 'Save Product'} onPress={handleSave} loading={saving} style={{ marginTop: 16, marginBottom: 8 }} />
+              <Button
+                title={saving ? 'Saving...' : 'Save Product'}
+                onPress={handleSave}
+                loading={saving}
+                style={{ marginTop: 20 }}
+              />
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Barcode Scanner Modal */}
+      <Modal visible={barcodeScanning} animationType="slide" onRequestClose={() => setBarcodeScanning(false)}>
+        <View style={s.scanRoot}>
+          <View style={s.scanHeader}>
+            <Text style={s.scanTitle}>Scan Product Barcode</Text>
+            <TouchableOpacity style={s.scanClose} onPress={() => setBarcodeScanning(false)}>
+              <Ionicons name="close" size={24} color={colors.white} />
+            </TouchableOpacity>
+          </View>
+          <View style={s.cameraContainer}>
+            <CameraView
+              style={StyleSheet.absoluteFill}
+              facing="back"
+              onBarcodeScanned={barcodeScanned ? undefined : handleBarcodeScan}
+              barcodeScannerSettings={{ barcodeTypes: ['ean13', 'ean8', 'code128', 'code39', 'qr', 'upc_a', 'upc_e'] }}
+            />
+            <View style={s.scanOverlay}>
+              <View style={s.scanOverlayTop} />
+              <View style={s.scanOverlayMiddle}>
+                <View style={s.scanOverlaySide} />
+                <View style={s.viewfinder}>
+                  <View style={[s.corner, s.cornerTL]} />
+                  <View style={[s.corner, s.cornerTR]} />
+                  <View style={[s.corner, s.cornerBL]} />
+                  <View style={[s.corner, s.cornerBR]} />
+                  <View style={s.scanLine} />
+                </View>
+                <View style={s.scanOverlaySide} />
+              </View>
+              <View style={s.scanOverlayBottom}>
+                <Text style={s.scanHint}>Point at barcode to auto-fill</Text>
+              </View>
+            </View>
+          </View>
+        </View>
       </Modal>
     </View>
   )
@@ -260,14 +360,35 @@ const s = StyleSheet.create({
   empty: { alignItems: 'center', paddingVertical: 60, gap: 10 },
   emptyText: { color: colors.slate400, fontSize: 14 },
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: '#00000088' },
-  modalSheet: { backgroundColor: colors.navyLight, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 40, maxHeight: '90%' },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  modalSheet: { backgroundColor: colors.navyLight, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 0 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   modalTitle: { color: colors.white, fontSize: 17, fontWeight: '700' },
-  label: { color: colors.slate400, fontSize: 12, fontWeight: '600', marginBottom: 6, marginTop: 12 },
+  label: { color: colors.slate400, fontSize: 12, fontWeight: '600', marginBottom: 6, marginTop: 14 },
   input: { backgroundColor: colors.navy, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, color: colors.white, fontSize: 14, borderWidth: 1, borderColor: colors.slate700 },
+  barcodeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  scanIconBtn: { width: 48, height: 48, borderRadius: 10, backgroundColor: colors.gold, alignItems: 'center', justifyContent: 'center' },
   statusRow: { flexDirection: 'row', gap: 10 },
   statusChip: { flex: 1, paddingVertical: 10, borderRadius: 10, backgroundColor: colors.navy, alignItems: 'center', borderWidth: 1, borderColor: colors.slate700 },
   statusChipActive: { backgroundColor: colors.gold, borderColor: colors.gold },
   statusChipText: { color: colors.slate400, fontSize: 13, fontWeight: '600' },
   statusChipTextActive: { color: colors.navy },
+  // Barcode scanner
+  scanRoot: { flex: 1, backgroundColor: '#000' },
+  scanHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 56, paddingBottom: 12, backgroundColor: '#000' },
+  scanTitle: { color: colors.white, fontSize: 18, fontWeight: '700' },
+  scanClose: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#ffffff22', alignItems: 'center', justifyContent: 'center' },
+  cameraContainer: { flex: 1 },
+  scanOverlay: { ...StyleSheet.absoluteFillObject },
+  scanOverlayTop: { flex: 1, backgroundColor: '#00000088' },
+  scanOverlayMiddle: { flexDirection: 'row', height: 240 },
+  scanOverlaySide: { flex: 1, backgroundColor: '#00000088' },
+  viewfinder: { width: 260, height: 240, position: 'relative' },
+  corner: { position: 'absolute', width: 24, height: 24, borderColor: colors.gold },
+  cornerTL: { top: 0, left: 0, borderTopWidth: 3, borderLeftWidth: 3 },
+  cornerTR: { top: 0, right: 0, borderTopWidth: 3, borderRightWidth: 3 },
+  cornerBL: { bottom: 0, left: 0, borderBottomWidth: 3, borderLeftWidth: 3 },
+  cornerBR: { bottom: 0, right: 0, borderBottomWidth: 3, borderRightWidth: 3 },
+  scanLine: { position: 'absolute', top: '50%', left: 8, right: 8, height: 2, backgroundColor: colors.gold + 'AA' },
+  scanOverlayBottom: { flex: 1, backgroundColor: '#00000088', alignItems: 'center', justifyContent: 'flex-start', paddingTop: 24 },
+  scanHint: { color: '#ffffffaa', fontSize: 14 },
 })
