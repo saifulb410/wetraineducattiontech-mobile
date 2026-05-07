@@ -16,6 +16,7 @@ export default function ModuleSwitcher() {
   const router = useRouter()
 
   const accessible = MODULES.filter(m => roles?.[m.access])
+  const isAdmin = roles?.profileRole === 'admin'
 
   return (
     <ScrollView style={s.scroll} contentContainerStyle={s.content}>
@@ -35,6 +36,23 @@ export default function ModuleSwitcher() {
         </TouchableOpacity>
       ))}
 
+      {isAdmin && (
+        <>
+          <View style={s.divider} />
+          <Text style={s.sectionLabel}>Platform Admin</Text>
+          <TouchableOpacity style={[s.card, s.adminCard]} onPress={() => router.push('/(app)/admin' as any)}>
+            <View style={[s.iconBox, { backgroundColor: colors.purple + '22' }]}>
+              <Ionicons name="shield-checkmark-outline" size={26} color={colors.purple} />
+            </View>
+            <View style={s.cardText}>
+              <Text style={[s.cardLabel, { color: colors.purple }]}>User Management</Text>
+              <Text style={s.cardSub}>Assign module roles to employees</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.slate400} />
+          </TouchableOpacity>
+        </>
+      )}
+
       <TouchableOpacity style={s.signOut} onPress={signOut}>
         <Ionicons name="log-out-outline" size={20} color={colors.red} />
         <Text style={s.signOutText}>Sign Out</Text>
@@ -49,10 +67,13 @@ const s = StyleSheet.create({
   title: { color: colors.white, fontSize: 24, fontWeight: 'bold', marginBottom: 4 },
   sub: { color: colors.slate400, fontSize: 14, marginBottom: 32 },
   card: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.navyLight, borderRadius: 16, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: '#1e3a5f' },
+  adminCard: { borderColor: colors.purple + '55' },
   iconBox: { width: 48, height: 48, borderRadius: 12, backgroundColor: '#0a1628', alignItems: 'center', justifyContent: 'center', marginRight: 14 },
   cardText: { flex: 1 },
   cardLabel: { color: colors.white, fontSize: 16, fontWeight: '700' },
   cardSub: { color: colors.slate400, fontSize: 12, marginTop: 2 },
+  divider: { height: 1, backgroundColor: colors.slate700, marginVertical: 16 },
+  sectionLabel: { color: colors.slate500, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: 10 },
   signOut: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 32, gap: 8 },
   signOutText: { color: colors.red, fontSize: 15, fontWeight: '600' },
 })

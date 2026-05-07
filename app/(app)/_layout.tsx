@@ -17,6 +17,16 @@ export default function AppLayout() {
           headerTitleStyle: { fontWeight: 'bold' },
         }}
       />
+      <Stack.Screen
+        name="admin"
+        options={{
+          headerShown: true,
+          title: 'User Management',
+          headerStyle: { backgroundColor: '#0a1628' },
+          headerTintColor: '#D4AF37',
+          headerTitleStyle: { fontWeight: 'bold' },
+        }}
+      />
     </Stack>
   )
 }
