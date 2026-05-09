@@ -98,29 +98,39 @@ export default function Products() {
     const qty = Math.max(0, parseInt(formQty) || 0)
 
     setSaving(true)
-    if (editTarget) {
-      await supabase.from('store_products').update({
-        name: formName.trim(), price, barcode: formBarcode.trim() || null, status: formStatus,
-      }).eq('id', editTarget.id)
-      // Update stock
-      const { data: existing } = await supabase.from('store_stocks').select('id').eq('product_id', editTarget.id).maybeSingle()
-      if (existing) {
-        await supabase.from('store_stocks').update({ on_hand: qty }).eq('product_id', editTarget.id)
+    try {
+      if (editTarget) {
+        const { error: updateErr } = await supabase.from('store_products').update({
+          name: formName.trim(), price, barcode: formBarcode.trim() || null, status: formStatus,
+        }).eq('id', editTarget.id)
+        if (updateErr) throw updateErr
+
+        const { data: existing } = await supabase.from('store_stocks').select('id').eq('product_id', editTarget.id).maybeSingle()
+        if (existing) {
+          const { error: sErr } = await supabase.from('store_stocks').update({ on_hand: qty }).eq('product_id', editTarget.id)
+          if (sErr) throw sErr
+        } else {
+          const { error: sErr } = await supabase.from('store_stocks').insert({ product_id: editTarget.id, on_hand: qty })
+          if (sErr) throw sErr
+        }
       } else {
-        await supabase.from('store_stocks').insert({ product_id: editTarget.id, on_hand: qty })
+        const { data: newProduct, error: insertErr } = await supabase.from('store_products').insert({
+          name: formName.trim(), price, barcode: formBarcode.trim() || null, status: formStatus,
+        }).select().single()
+        if (insertErr) throw insertErr
+
+        if (newProduct) {
+          const { error: sErr } = await supabase.from('store_stocks').insert({ product_id: newProduct.id, on_hand: qty })
+          if (sErr) throw sErr
+        }
       }
-    } else {
-      const { data: newProduct } = await supabase.from('store_products').insert({
-        name: formName.trim(), price, barcode: formBarcode.trim() || null, status: formStatus,
-      }).select().single()
-      // Set initial stock
-      if (newProduct) {
-        await supabase.from('store_stocks').insert({ product_id: newProduct.id, on_hand: qty })
-      }
+      setShowForm(false)
+      fetchProducts()
+    } catch (err: any) {
+      Alert.alert('Save Failed', err?.message ?? 'Could not save product. Check Supabase table permissions (RLS).')
+    } finally {
+      setSaving(false)
     }
-    setSaving(false)
-    setShowForm(false)
-    fetchProducts()
   }
 
   const handleDelete = (p: Product) => {
