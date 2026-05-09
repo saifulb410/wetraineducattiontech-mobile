@@ -186,7 +186,9 @@ export default function Stocks() {
                   placeholderTextColor={colors.slate500}
                   keyboardType="number-pad"
                 />
-                <Button title={saving ? 'Saving...' : 'Apply Adjustment'} onPress={handleAdjust} loading={saving} style={{ marginTop: 32 }} />
+                <View style={{ marginTop: 32 }}>
+                  <Button title={saving ? 'Saving...' : 'Apply Adjustment'} onPress={handleAdjust} loading={saving} />
+                </View>
               </>
             )}
           </View>
