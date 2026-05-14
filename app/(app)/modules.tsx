@@ -53,6 +53,19 @@ export default function ModuleSwitcher() {
         </>
       )}
 
+      <View style={s.divider} />
+      <Text style={s.sectionLabel}>Tools</Text>
+      <TouchableOpacity style={s.card} onPress={() => router.push('/(app)/profit-calculator' as any)}>
+        <View style={[s.iconBox, { backgroundColor: '#16301622' }]}>
+          <Ionicons name="calculator-outline" size={26} color={colors.green} />
+        </View>
+        <View style={s.cardText}>
+          <Text style={[s.cardLabel, { color: colors.green }]}>Profit Share</Text>
+          <Text style={s.cardSub}>Team bonus breakdown</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={20} color={colors.slate400} />
+      </TouchableOpacity>
+
       <TouchableOpacity style={s.signOut} onPress={signOut}>
         <Ionicons name="log-out-outline" size={20} color={colors.red} />
         <Text style={s.signOutText}>Sign Out</Text>

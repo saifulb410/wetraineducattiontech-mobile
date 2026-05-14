@@ -27,6 +27,16 @@ export default function AppLayout() {
           headerTitleStyle: { fontWeight: 'bold' },
         }}
       />
+      <Stack.Screen
+        name="profit-calculator"
+        options={{
+          headerShown: true,
+          title: 'Profit Share Calculator',
+          headerStyle: { backgroundColor: '#0a1628' },
+          headerTintColor: '#D4AF37',
+          headerTitleStyle: { fontWeight: 'bold' },
+        }}
+      />
     </Stack>
   )
 }
