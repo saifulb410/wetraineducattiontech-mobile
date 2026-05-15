@@ -7,7 +7,6 @@ import {
 import { Ionicons } from '@expo/vector-icons'
 import { supabase } from '@/lib/supabase'
 import { useAuthContext } from '@/context/AuthContext'
-import { Card } from '@/components/ui/Card'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { colors } from '@/lib/theme'
 
@@ -31,6 +30,11 @@ interface EmployeeAccount {
   profiles: { full_name: string | null; email: string | null } | null
 }
 
+interface StoreEmployee {
+  id: string
+  profiles: { full_name: string | null; email: string | null } | null
+}
+
 function todayStr() {
   return new Date().toISOString().slice(0, 10)
 }
@@ -43,12 +47,13 @@ function currentMonthStr() {
 export default function AccountsAdmin() {
   const { user } = useAuthContext()
   const [accounts, setAccounts] = useState<EmployeeAccount[]>([])
+  const [employees, setEmployees] = useState<StoreEmployee[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
   // Modal state
   const [showModal, setShowModal] = useState(false)
-  const [selectedUserId, setSelectedUserId] = useState<string>('')
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([])
   const [entryType, setEntryType] = useState<'Deposit' | 'Withdrawal'>('Deposit')
   const [amount, setAmount] = useState('')
   const [category, setCategory] = useState('Monthly Allocation')
@@ -59,11 +64,22 @@ export default function AccountsAdmin() {
   const [saving, setSaving] = useState(false)
 
   const fetchAccounts = useCallback(async () => {
-    const { data } = await supabase
-      .from('store_accounts')
-      .select('user_id,balance,profiles(full_name,email)')
-      .order('balance', { ascending: false })
-    setAccounts((data as EmployeeAccount[]) ?? [])
+    const [accountsRes, usersRes] = await Promise.all([
+      supabase.from('store_accounts').select('user_id,balance,profiles(full_name,email)').order('balance', { ascending: false }),
+      supabase.from('store_users').select('id'),
+    ])
+    const ids = (usersRes.data ?? []).map((u: any) => u.id)
+    let empList: StoreEmployee[] = []
+    if (ids.length > 0) {
+      const { data: profileData } = await supabase
+        .from('profiles').select('id,full_name,email').in('id', ids)
+      empList = (profileData ?? []).map((p: any) => ({
+        id: p.id,
+        profiles: { full_name: p.full_name, email: p.email },
+      }))
+    }
+    setAccounts((accountsRes.data as EmployeeAccount[]) ?? [])
+    setEmployees(empList)
     setLoading(false)
     setRefreshing(false)
   }, [])
@@ -72,7 +88,7 @@ export default function AccountsAdmin() {
   const onRefresh = () => { setRefreshing(true); fetchAccounts() }
 
   const openModal = (preselect?: string) => {
-    setSelectedUserId(preselect ?? '')
+    setSelectedUserIds(preselect ? [preselect] : [])
     setEntryType('Deposit')
     setAmount('')
     setCategory('Monthly Allocation')
@@ -82,42 +98,45 @@ export default function AccountsAdmin() {
     setShowModal(true)
   }
 
+  const toggleEmployee = (id: string) => {
+    setSelectedUserIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    )
+  }
+
   const handleSave = async () => {
-    if (!selectedUserId) { Alert.alert('Validation', 'Please select an employee.'); return }
+    if (selectedUserIds.length === 0) { Alert.alert('Validation', 'Please select at least one employee.'); return }
     const amt = parseFloat(amount)
     if (isNaN(amt) || amt <= 0) { Alert.alert('Validation', 'Enter a valid amount.'); return }
-
-    const account = accounts.find(a => a.user_id === selectedUserId)
-    if (!account) return
 
     setSaving(true)
     try {
       const isDeposit = entryType === 'Deposit'
-      const newBalance = isDeposit
-        ? (account.balance ?? 0) + amt
-        : (account.balance ?? 0) - amt
+      for (const uid of selectedUserIds) {
+        const currentBalance = accounts.find(a => a.user_id === uid)?.balance ?? 0
+        const newBalance = isDeposit ? currentBalance + amt : currentBalance - amt
 
-      const { error: balErr } = await supabase
-        .from('store_accounts')
-        .update({ balance: newBalance })
-        .eq('user_id', selectedUserId)
-      if (balErr) throw balErr
+        const { error: balErr } = await supabase
+          .from('store_accounts')
+          .upsert({ user_id: uid, balance: newBalance }, { onConflict: 'user_id' })
+        if (balErr) throw balErr
 
-      const { error: ledErr } = await supabase.from('store_ledger').insert({
-        user_id: selectedUserId,
-        type: isDeposit ? 'credit' : 'debit',
-        amount: amt,
-        notes: notes.trim() || null,
-        category,
-        effective_date: effectiveDate || null,
-        effective_month: effectiveMonth || null,
-        created_by: user?.id ?? null,
-      })
-      if (ledErr) throw ledErr
+        const { error: ledErr } = await supabase.from('store_ledger').insert({
+          user_id: uid,
+          type: isDeposit ? 'credit' : 'debit',
+          amount: amt,
+          notes: notes.trim() || null,
+          category,
+          effective_date: effectiveDate || null,
+          effective_month: effectiveMonth || null,
+          created_by: user?.id ?? null,
+        })
+        if (ledErr) throw ledErr
+      }
 
       await fetchAccounts()
       setShowModal(false)
-      Alert.alert('Saved', `${entryType} of ৳${amt.toFixed(2)} saved successfully.`)
+      Alert.alert('Saved', `${entryType} of ৳${amt.toFixed(2)} applied to ${selectedUserIds.length} employee${selectedUserIds.length > 1 ? 's' : ''}.`)
     } catch (err: any) {
       Alert.alert('Error', err?.message ?? 'Failed to save entry.')
     } finally {
@@ -131,30 +150,42 @@ export default function AccountsAdmin() {
 
   if (loading) return <LoadingScreen />
 
-  const selectedAccount = accounts.find(a => a.user_id === selectedUserId)
+  const selectedAccount = accounts.find(a => a.user_id === selectedUserIds[0])
 
   return (
     <View style={s.root}>
       {/* Summary row */}
       <View style={s.summaryRow}>
-        <Card style={s.sumCard}>
+        <View style={[s.sumCard, { borderColor: colors.blue + '44' }]}>
+          <View style={[s.sumIcon, { backgroundColor: colors.blue + '22' }]}>
+            <Ionicons name="people-outline" size={18} color={colors.blue} />
+          </View>
           <Text style={s.sumNum}>{accounts.length}</Text>
-          <Text style={s.sumLabel}>Total{'\n'}Accounts</Text>
-        </Card>
-        <Card style={s.sumCard}>
+          <Text style={s.sumLabel}>Total Accounts</Text>
+        </View>
+        <View style={[s.sumCard, { borderColor: (totalBalance >= 0 ? colors.green : colors.red) + '44' }]}>
+          <View style={[s.sumIcon, { backgroundColor: (totalBalance >= 0 ? colors.green : colors.red) + '22' }]}>
+            <Ionicons name="wallet-outline" size={18} color={totalBalance >= 0 ? colors.green : colors.red} />
+          </View>
           <Text style={[s.sumNum, { color: totalBalance >= 0 ? colors.green : colors.red }]}>
             ৳{Math.abs(totalBalance).toLocaleString()}
           </Text>
-          <Text style={s.sumLabel}>Net{'\n'}Balance</Text>
-        </Card>
-        <Card style={s.sumCard}>
+          <Text style={s.sumLabel}>Net Balance</Text>
+        </View>
+        <View style={[s.sumCard, { borderColor: colors.green + '44' }]}>
+          <View style={[s.sumIcon, { backgroundColor: colors.green + '22' }]}>
+            <Ionicons name="trending-up-outline" size={18} color={colors.green} />
+          </View>
           <Text style={[s.sumNum, { color: colors.green }]}>{positiveCount}</Text>
-          <Text style={s.sumLabel}>Positive{'\n'}Bal</Text>
-        </Card>
-        <Card style={s.sumCard}>
+          <Text style={s.sumLabel}>Positive Bal</Text>
+        </View>
+        <View style={[s.sumCard, { borderColor: (negativeCount > 0 ? colors.red : colors.slate700) + '44' }]}>
+          <View style={[s.sumIcon, { backgroundColor: (negativeCount > 0 ? colors.red : colors.slate600) + '22' }]}>
+            <Ionicons name="trending-down-outline" size={18} color={negativeCount > 0 ? colors.red : colors.slate500} />
+          </View>
           <Text style={[s.sumNum, { color: negativeCount > 0 ? colors.red : colors.slate400 }]}>{negativeCount}</Text>
-          <Text style={s.sumLabel}>In{'\n'}Debt</Text>
-        </Card>
+          <Text style={s.sumLabel}>In Debt</Text>
+        </View>
       </View>
 
       {/* Add button */}
@@ -223,31 +254,32 @@ export default function AccountsAdmin() {
 
             <ScrollView contentContainerStyle={{ paddingBottom: 8 }} keyboardShouldPersistTaps="handled">
               {/* Employee */}
-              <Text style={s.label}>Employee</Text>
+              <Text style={s.label}>
+                Employee <Text style={{ color: colors.gold }}>{selectedUserIds.length > 0 ? `(${selectedUserIds.length} selected)` : ''}</Text>
+              </Text>
               <View style={s.pickerBox}>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
-                  {accounts.map(a => {
-                    const profile = a.profiles as any
-                    const name = profile?.full_name ?? profile?.email ?? a.user_id.slice(0, 8)
-                    const active = selectedUserId === a.user_id
-                    return (
-                      <TouchableOpacity
-                        key={a.user_id}
-                        style={[s.empChip, active && s.empChipActive]}
-                        onPress={() => setSelectedUserId(a.user_id)}
-                      >
-                        <View style={[s.empChipAvatar, active && { backgroundColor: colors.navy }]}>
-                          <Text style={[s.empChipInitial, active && { color: colors.gold }]}>
-                            {(name as string).charAt(0).toUpperCase()}
-                          </Text>
-                        </View>
-                        <Text style={[s.empChipName, active && { color: colors.gold }]} numberOfLines={1}>
-                          {name}
+                {employees.map(e => {
+                  const profile = e.profiles as any
+                  const name = profile?.full_name ?? profile?.email ?? e.id.slice(0, 8)
+                  const active = selectedUserIds.includes(e.id)
+                  return (
+                    <TouchableOpacity
+                      key={e.id}
+                      style={[s.empChip, active && s.empChipActive]}
+                      onPress={() => toggleEmployee(e.id)}
+                    >
+                      <View style={[s.empChipAvatar, active && { backgroundColor: colors.navy }]}>
+                        <Text style={[s.empChipInitial, active && { color: colors.gold }]}>
+                          {(name as string).charAt(0).toUpperCase()}
                         </Text>
-                      </TouchableOpacity>
-                    )
-                  })}
-                </ScrollView>
+                      </View>
+                      <Text style={[s.empChipName, active && { color: colors.gold }]} numberOfLines={1}>
+                        {name}
+                      </Text>
+                      {active && <Ionicons name="checkmark-circle" size={14} color={colors.gold} />}
+                    </TouchableOpacity>
+                  )
+                })}
               </View>
               {selectedAccount && (
                 <Text style={s.currentBal}>
@@ -375,10 +407,15 @@ export default function AccountsAdmin() {
 
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.navy },
-  summaryRow: { flexDirection: 'row', gap: 6, padding: 12, paddingBottom: 8 },
-  sumCard: { flex: 1, alignItems: 'center', paddingVertical: 10, gap: 4 },
-  sumNum: { color: colors.white, fontSize: 14, fontWeight: '800' },
-  sumLabel: { color: colors.slate400, fontSize: 9, fontWeight: '600', textAlign: 'center', lineHeight: 13 },
+  summaryRow: { flexDirection: 'row', gap: 8, padding: 12, paddingBottom: 10 },
+  sumCard: {
+    flex: 1, alignItems: 'center', paddingVertical: 12, gap: 6,
+    backgroundColor: colors.navyLight, borderRadius: 14,
+    borderWidth: 1, borderColor: colors.slate700,
+  },
+  sumIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  sumNum: { color: colors.white, fontSize: 13, fontWeight: '800' },
+  sumLabel: { color: colors.slate400, fontSize: 9, fontWeight: '600', textAlign: 'center' },
   addBar: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     backgroundColor: colors.gold, marginHorizontal: 12, marginBottom: 10,
@@ -413,16 +450,16 @@ const s = StyleSheet.create({
   modalSub: { color: colors.slate400, fontSize: 11, marginTop: 2 },
   label: { color: colors.slate400, fontSize: 12, fontWeight: '600', marginBottom: 6, marginTop: 14 },
   // Employee picker
-  pickerBox: { borderWidth: 1, borderColor: colors.slate700, borderRadius: 10, backgroundColor: colors.navy, paddingHorizontal: 8, paddingVertical: 6 },
+  pickerBox: { borderWidth: 1, borderColor: colors.slate700, borderRadius: 10, backgroundColor: colors.navy, padding: 8, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   empChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 20,
-    borderWidth: 1, borderColor: colors.slate700, paddingHorizontal: 10, paddingVertical: 6,
-    backgroundColor: colors.navyLight,
+    flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 10,
+    borderWidth: 1, borderColor: colors.slate700, paddingHorizontal: 10, paddingVertical: 8,
+    backgroundColor: colors.navyLight, width: '47%',
   },
   empChipActive: { borderColor: colors.gold, backgroundColor: colors.gold + '22' },
-  empChipAvatar: { width: 24, height: 24, borderRadius: 12, backgroundColor: colors.blue + '33', alignItems: 'center', justifyContent: 'center' },
-  empChipInitial: { color: colors.blue, fontSize: 11, fontWeight: '800' },
-  empChipName: { color: colors.slate300, fontSize: 12, fontWeight: '600', maxWidth: 90 },
+  empChipAvatar: { width: 28, height: 28, borderRadius: 14, backgroundColor: colors.blue + '33', alignItems: 'center', justifyContent: 'center' },
+  empChipInitial: { color: colors.blue, fontSize: 12, fontWeight: '800' },
+  empChipName: { color: colors.slate300, fontSize: 12, fontWeight: '600', flex: 1 },
   currentBal: { color: colors.slate400, fontSize: 12, marginTop: 6 },
   // Entry type
   typeRow: { flexDirection: 'row', gap: 10 },

@@ -101,6 +101,32 @@ export default function StoreDashboard() {
         {isAdmin ? (
           /* ── ADMIN VIEW ── */
           <>
+            {/* Personal balance card (same as employee) */}
+            <Card style={s.balanceCard}>
+              <View style={s.balanceTop}>
+                <View style={s.balanceIconWrap}>
+                  <Ionicons name="wallet-outline" size={22} color={colors.gold} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.balanceLabel}>Current Balance</Text>
+                  <Text style={[s.balanceAmount, { color: balance >= 0 ? colors.green : colors.red }]}>
+                    ৳{balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  </Text>
+                </View>
+                <View style={s.balanceMeta}>
+                  <Text style={s.metaVal}>{pendingInvoices}</Text>
+                  <Text style={s.metaLabel}>Pending</Text>
+                </View>
+              </View>
+              <View style={s.monthRow}>
+                <Ionicons name="calendar-outline" size={13} color={colors.slate400} />
+                <Text style={s.monthText}>
+                  This month: <Text style={{ color: colors.white, fontWeight: '700' }}>৳{monthPurchases.toLocaleString()}</Text>
+                  {' '}from {monthPurchaseCount} purchase{monthPurchaseCount !== 1 ? 's' : ''}
+                </Text>
+              </View>
+            </Card>
+
             {/* Admin stats grid */}
             <View style={s.statsGrid}>
               <Card style={s.statCard}>

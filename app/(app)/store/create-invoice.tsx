@@ -24,10 +24,12 @@ interface Product {
 interface CartItem { product: Product; qty: number }
 
 export default function CreateInvoice() {
-  const { user } = useAuthContext()
+  const { user, roles } = useAuthContext()
+  const isAdmin = roles?.storeRole === 'ADMIN'
   const [permission, requestPermission] = useCameraPermissions()
 
   const [products, setProducts] = useState<Product[]>([])
+  const [balance, setBalance] = useState<number>(0)
   const [search, setSearch] = useState('')
   const [cart, setCart] = useState<Record<string, CartItem>>({})
   const [loading, setLoading] = useState(true)
@@ -37,16 +39,16 @@ export default function CreateInvoice() {
   const [scanFeedback, setScanFeedback] = useState<{ text: string; success: boolean } | null>(null)
 
   const fetchProducts = async () => {
-    const { data } = await supabase
-      .from('store_products')
-      .select('id,name,price,status,barcode,store_stocks(on_hand)')
-      .eq('status', 'active')
-      .order('name')
-    setProducts((data as Product[]) ?? [])
+    const [productsRes, balanceRes] = await Promise.all([
+      supabase.from('store_products').select('id,name,price,status,barcode,store_stocks(on_hand)').eq('status', 'active').order('name'),
+      user ? supabase.from('store_accounts').select('balance').eq('user_id', user.id).maybeSingle() : Promise.resolve({ data: null }),
+    ])
+    setProducts((productsRes.data as Product[]) ?? [])
+    setBalance((balanceRes as any).data?.balance ?? 0)
     setLoading(false)
   }
 
-  useEffect(() => { fetchProducts() }, [])
+  useEffect(() => { fetchProducts() }, [user])
 
   const filtered = products.filter(p =>
     p.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -116,6 +118,10 @@ export default function CreateInvoice() {
   const handleSubmit = async () => {
     if (cartItems.length === 0) { Alert.alert('Empty Cart', 'Add items first.'); return }
     if (!user) return
+    if (!isAdmin && balance < cartTotal) {
+      Alert.alert('Insufficient Balance', `Your balance is ৳${balance.toFixed(2)} but cart total is ৳${cartTotal.toFixed(2)}. Please ask admin to top up your account.`)
+      return
+    }
 
     setSubmitting(true)
 
@@ -251,6 +257,21 @@ export default function CreateInvoice() {
         </View>
       </ScrollView>
 
+      {/* Balance bar - always visible for employees */}
+      {!isAdmin && (
+        <View style={[s.balanceBar, { borderTopColor: balance <= 0 ? colors.red + '55' : colors.slate700 }]}>
+          <Ionicons name="wallet-outline" size={14} color={balance <= 0 ? colors.red : colors.green} />
+          <Text style={[s.balanceBarText, { color: balance <= 0 ? colors.red : colors.slate400 }]}>
+            Balance: <Text style={{ color: balance <= 0 ? colors.red : colors.green, fontWeight: '800' }}>৳{balance.toFixed(2)}</Text>
+          </Text>
+          {cartCount > 0 && balance < cartTotal && (
+            <View style={s.warnBadge}>
+              <Text style={s.warnText}>Insufficient</Text>
+            </View>
+          )}
+        </View>
+      )}
+
       {/* Bottom checkout bar */}
       {cartCount > 0 && (
         <View style={s.checkoutBar}>
@@ -354,6 +375,10 @@ const s = StyleSheet.create({
   qtyBtn: { width: 28, height: 28, borderRadius: 8, backgroundColor: colors.slate700, alignItems: 'center', justifyContent: 'center' },
   qtyBtnAdd: { width: 28, height: 28, borderRadius: 8, backgroundColor: colors.gold, alignItems: 'center', justifyContent: 'center' },
   qtyNum: { color: colors.white, fontWeight: '800', fontSize: 15, minWidth: 20, textAlign: 'center' },
+  balanceBar: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 8, backgroundColor: colors.navyLight, borderTopWidth: 1 },
+  balanceBarText: { flex: 1, fontSize: 12 },
+  warnBadge: { backgroundColor: colors.red + '22', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  warnText: { color: colors.red, fontSize: 11, fontWeight: '700' },
   checkoutBar: { padding: 16, paddingBottom: 24, backgroundColor: colors.navyLight, borderTopWidth: 1, borderTopColor: colors.slate700 },
   checkoutInfo: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   checkoutCount: { color: colors.slate400, fontSize: 13 },

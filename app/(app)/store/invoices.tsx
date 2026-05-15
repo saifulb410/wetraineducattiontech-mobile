@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   View, Text, ScrollView, RefreshControl,
-  StyleSheet, TouchableOpacity,
+  StyleSheet, TouchableOpacity, Modal, ActivityIndicator,
 } from 'react-native'
 import { useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
@@ -18,7 +18,14 @@ interface Invoice {
   notes: string | null
   confirmed_at: string | null
   created_at: string
-  store_accounts?: { profiles?: { full_name: string | null } | null } | null
+}
+
+interface InvoiceItem {
+  id: string
+  product_name: string
+  quantity: number
+  unit_price: number
+  total_price: number
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -39,6 +46,9 @@ export default function Invoices() {
   const [filter, setFilter] = useState('All')
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [detailInv, setDetailInv] = useState<Invoice | null>(null)
+  const [detailItems, setDetailItems] = useState<InvoiceItem[]>([])
+  const [detailLoading, setDetailLoading] = useState(false)
 
   const fetchData = async () => {
     if (!user) return
@@ -56,6 +66,19 @@ export default function Invoices() {
     setRefreshing(false)
   }
 
+  const openDetail = async (inv: Invoice) => {
+    setDetailInv(inv)
+    setDetailItems([])
+    setDetailLoading(true)
+    const { data } = await supabase
+      .from('store_invoice_items')
+      .select('id,product_name,quantity,unit_price,total_price')
+      .eq('invoice_id', inv.id)
+      .order('product_name')
+    setDetailItems((data as InvoiceItem[]) ?? [])
+    setDetailLoading(false)
+  }
+
   useEffect(() => { fetchData() }, [user])
   const onRefresh = () => { setRefreshing(true); fetchData() }
 
@@ -66,6 +89,7 @@ export default function Invoices() {
   if (loading) return <LoadingScreen />
 
   return (
+    <View style={{ flex: 1 }}>
     <ScrollView style={s.scroll} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.gold} />}>
       <View style={s.container}>
         {/* Summary */}
@@ -108,7 +132,8 @@ export default function Invoices() {
             const statusColor = STATUS_COLORS[inv.status] ?? colors.slate400
             const date = new Date(inv.created_at)
             return (
-              <Card key={inv.id} style={s.card}>
+              <TouchableOpacity key={inv.id} onPress={() => openDetail(inv)} activeOpacity={0.8}>
+              <Card style={s.card}>
                 <View style={s.cardTop}>
                   <View style={{ flex: 1 }}>
                     <Text style={s.invoiceId}>INV-{inv.id.slice(0, 8).toUpperCase()}</Text>
@@ -136,12 +161,72 @@ export default function Invoices() {
                     </Text>
                   </View>
                 )}
+                <View style={s.tapHint}>
+                  <Text style={s.tapHintText}>Tap to view items</Text>
+                  <Ionicons name="chevron-forward" size={12} color={colors.slate600} />
+                </View>
               </Card>
+              </TouchableOpacity>
             )
           })
         )}
       </View>
     </ScrollView>
+
+    {/* Invoice Detail Modal */}
+    <Modal visible={!!detailInv} animationType="slide" transparent onRequestClose={() => setDetailInv(null)}>
+      <View style={s.modalOverlay}>
+        <View style={s.modalCard}>
+          {/* Header */}
+          <View style={s.modalHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={s.modalId}>INV-{detailInv?.id.slice(0, 8).toUpperCase()}</Text>
+              <Text style={s.modalDate}>
+                {detailInv ? new Date(detailInv.created_at).toLocaleString('en-GB') : ''}
+              </Text>
+            </View>
+            <View style={{ alignItems: 'flex-end', gap: 4 }}>
+              {detailInv && (
+                <View style={[s.statusBadge, { backgroundColor: (STATUS_COLORS[detailInv.status] ?? colors.slate400) + '22' }]}>
+                  <Text style={[s.statusText, { color: STATUS_COLORS[detailInv.status] ?? colors.slate400 }]}>{detailInv.status}</Text>
+                </View>
+              )}
+              <TouchableOpacity onPress={() => setDetailInv(null)}>
+                <Ionicons name="close-circle" size={24} color={colors.slate400} />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Items */}
+          <Text style={s.itemsLabel}>Items Purchased</Text>
+          {detailLoading ? (
+            <ActivityIndicator color={colors.gold} style={{ marginVertical: 20 }} />
+          ) : detailItems.length === 0 ? (
+            <Text style={s.noItems}>No items found</Text>
+          ) : (
+            <ScrollView style={{ maxHeight: 280 }} showsVerticalScrollIndicator={false}>
+              {detailItems.map((item, i) => (
+                <View key={item.id} style={[s.itemRow, i < detailItems.length - 1 && s.itemBorder]}>
+                  <View style={s.itemDot} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.itemName}>{item.product_name}</Text>
+                    <Text style={s.itemUnit}>৳{item.unit_price} × {item.quantity}</Text>
+                  </View>
+                  <Text style={s.itemTotal}>৳{item.total_price.toLocaleString()}</Text>
+                </View>
+              ))}
+            </ScrollView>
+          )}
+
+          {/* Total */}
+          <View style={s.totalRow}>
+            <Text style={s.totalLabel}>Total</Text>
+            <Text style={s.totalAmount}>৳{(detailInv?.amount ?? 0).toLocaleString()}</Text>
+          </View>
+        </View>
+      </View>
+    </Modal>
+    </View>
   )
 }
 
@@ -172,4 +257,23 @@ const s = StyleSheet.create({
   confirmedText: { color: colors.green, fontSize: 11 },
   emptyCard: { alignItems: 'center', paddingVertical: 40, gap: 10 },
   emptyText: { color: colors.slate400, fontSize: 14 },
+  tapHint: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 6, gap: 2 },
+  tapHintText: { color: colors.slate600, fontSize: 10 },
+  // Modal
+  modalOverlay: { flex: 1, backgroundColor: '#00000088', justifyContent: 'flex-end' },
+  modalCard: { backgroundColor: colors.navyLight, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 36 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: colors.slate700 },
+  modalId: { color: colors.gold, fontSize: 15, fontWeight: '800' },
+  modalDate: { color: colors.slate400, fontSize: 12, marginTop: 3 },
+  itemsLabel: { color: colors.slate400, fontSize: 11, fontWeight: '700', letterSpacing: 0.5, marginBottom: 8 },
+  noItems: { color: colors.slate500, fontSize: 13, textAlign: 'center', paddingVertical: 16 },
+  itemRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 },
+  itemBorder: { borderBottomWidth: 1, borderBottomColor: colors.slate700 + '55' },
+  itemDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.gold },
+  itemName: { color: colors.white, fontSize: 13, fontWeight: '600' },
+  itemUnit: { color: colors.slate400, fontSize: 11, marginTop: 2 },
+  itemTotal: { color: colors.gold, fontSize: 14, fontWeight: '800' },
+  totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: colors.slate700 },
+  totalLabel: { color: colors.slate400, fontSize: 13, fontWeight: '700' },
+  totalAmount: { color: colors.white, fontSize: 22, fontWeight: '900' },
 })

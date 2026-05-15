@@ -12,10 +12,12 @@ import { colors } from '@/lib/theme'
 
 interface LedgerEntry {
   id: string
+  user_id: string
   type: string
   amount: number
   notes: string | null
   created_at: string
+  profiles?: { full_name: string | null; email: string | null } | null
 }
 
 const TYPE_CONFIG: Record<string, { color: string; icon: string; sign: string }> = {
@@ -35,6 +37,7 @@ export default function Ledger() {
 
   const [entries, setEntries] = useState<LedgerEntry[]>([])
   const [filter, setFilter] = useState('All')
+  const [showAll, setShowAll] = useState(false)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -42,19 +45,33 @@ export default function Ledger() {
     if (!user) return
     let q = supabase
       .from('store_ledger')
-      .select('id,type,amount,notes,created_at')
+      .select('id,user_id,type,amount,notes,created_at')
       .order('created_at', { ascending: false })
-      .limit(100)
+      .limit(200)
 
-    if (!isAdmin) q = q.eq('user_id', user.id)
+    if (!isAdmin || !showAll) q = q.eq('user_id', user.id)
 
     const { data } = await q
-    setEntries((data as LedgerEntry[]) ?? [])
+
+    if (isAdmin && showAll) {
+      const ids = [...new Set((data ?? []).map((e: any) => e.user_id))]
+      if (ids.length > 0) {
+        const { data: profileData } = await supabase.from('profiles').select('id,full_name,email').in('id', ids)
+        const profileMap: Record<string, any> = {}
+        ;(profileData ?? []).forEach((p: any) => { profileMap[p.id] = p })
+        setEntries(((data ?? []) as LedgerEntry[]).map(e => ({ ...e, profiles: profileMap[e.user_id] ?? null })))
+      } else {
+        setEntries([])
+      }
+    } else {
+      setEntries((data as LedgerEntry[]) ?? [])
+    }
+
     setLoading(false)
     setRefreshing(false)
   }
 
-  useEffect(() => { fetchData() }, [user])
+  useEffect(() => { fetchData() }, [user, showAll])
   const onRefresh = () => { setRefreshing(true); fetchData() }
 
   const filtered = filter === 'All' ? entries : entries.filter(e => e.type === filter)
@@ -85,6 +102,26 @@ export default function Ledger() {
             <Text style={s.statLabel}>Entries</Text>
           </Card>
         </View>
+
+        {/* Admin toggle */}
+        {isAdmin && (
+          <View style={s.toggleRow}>
+            <TouchableOpacity
+              style={[s.toggleBtn, !showAll && s.toggleBtnActive]}
+              onPress={() => setShowAll(false)}
+            >
+              <Ionicons name="person-outline" size={13} color={!showAll ? colors.navy : colors.slate400} />
+              <Text style={[s.toggleText, !showAll && s.toggleTextActive]}>My Ledger</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.toggleBtn, showAll && s.toggleBtnActive]}
+              onPress={() => setShowAll(true)}
+            >
+              <Ionicons name="people-outline" size={13} color={showAll ? colors.navy : colors.slate400} />
+              <Text style={[s.toggleText, showAll && s.toggleTextActive]}>All Employees</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Filters */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filterRow}>
@@ -119,6 +156,11 @@ export default function Ledger() {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={s.entryType}>{entry.type.charAt(0).toUpperCase() + entry.type.slice(1)}</Text>
+                    {showAll && entry.profiles && (
+                      <Text style={[s.entryNotes, { color: colors.gold }]} numberOfLines={1}>
+                        {(entry.profiles as any)?.full_name ?? (entry.profiles as any)?.email ?? ''}
+                      </Text>
+                    )}
                     {entry.notes ? (
                       <Text style={s.entryNotes} numberOfLines={1}>{entry.notes}</Text>
                     ) : null}
@@ -146,6 +188,11 @@ const s = StyleSheet.create({
   statCard: { flex: 1, alignItems: 'center', paddingVertical: 14, gap: 4 },
   statNum: { fontSize: 16, fontWeight: 'bold' },
   statLabel: { color: colors.slate400, fontSize: 10, fontWeight: '600' },
+  toggleRow: { flexDirection: 'row', backgroundColor: colors.navyLight, borderRadius: 12, padding: 4, marginBottom: 12, borderWidth: 1, borderColor: colors.slate700 },
+  toggleBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 8, borderRadius: 10 },
+  toggleBtnActive: { backgroundColor: colors.gold },
+  toggleText: { color: colors.slate400, fontSize: 12, fontWeight: '700' },
+  toggleTextActive: { color: colors.navy },
   filterRow: { marginBottom: 14 },
   chip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, backgroundColor: colors.navyLight, borderWidth: 1, borderColor: colors.slate700, marginRight: 8 },
   chipActive: { backgroundColor: colors.gold, borderColor: colors.gold },
