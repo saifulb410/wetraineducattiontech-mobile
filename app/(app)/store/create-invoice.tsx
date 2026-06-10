@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import {
-  View, Text, ScrollView, TextInput, Alert,
+  View, Text, ScrollView, TextInput,
   StyleSheet, TouchableOpacity, Modal,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
@@ -37,6 +37,10 @@ export default function CreateInvoice() {
   const [scannerOpen, setScannerOpen] = useState(false)
   const [scanned, setScanned] = useState(false)
   const [scanFeedback, setScanFeedback] = useState<{ text: string; success: boolean } | null>(null)
+  const [appAlert, setAppAlert] = useState<{ title: string; message: string; type: 'success' | 'error' | 'warning' } | null>(null)
+
+  const showAlert = (title: string, message: string, type: 'success' | 'error' | 'warning' = 'error') =>
+    setAppAlert({ title, message, type })
 
   const fetchProducts = async () => {
     const [productsRes, balanceRes] = await Promise.all([
@@ -82,7 +86,7 @@ export default function CreateInvoice() {
     if (!permission?.granted) {
       const result = await requestPermission()
       if (!result.granted) {
-        Alert.alert('Permission Denied', 'Camera access is required to scan barcodes.')
+        showAlert('Permission Denied', 'Camera access is required to scan barcodes.')
         return
       }
     }
@@ -116,10 +120,10 @@ export default function CreateInvoice() {
   }
 
   const handleSubmit = async () => {
-    if (cartItems.length === 0) { Alert.alert('Empty Cart', 'Add items first.'); return }
+    if (cartItems.length === 0) { showAlert('Empty Cart', 'Add items first.', 'warning'); return }
     if (!user) return
     if (!isAdmin && balance < cartTotal) {
-      Alert.alert('Insufficient Balance', `Your balance is ৳${balance.toFixed(2)} but cart total is ৳${cartTotal.toFixed(2)}. Please ask admin to top up your account.`)
+      showAlert('Insufficient Balance', `Your balance is ৳${balance.toFixed(2)} but cart total is ৳${cartTotal.toFixed(2)}. Please ask admin to top up your account.`, 'warning')
       return
     }
 
@@ -133,7 +137,7 @@ export default function CreateInvoice() {
 
     if (invErr || !invoice) {
       setSubmitting(false)
-      Alert.alert('Error', invErr?.message ?? 'Failed to create invoice')
+      showAlert('Error', invErr?.message ?? 'Failed to create invoice')
       return
     }
 
@@ -148,6 +152,14 @@ export default function CreateInvoice() {
       }))
     )
 
+    // Deduct stock for each item purchased
+    for (const { product, qty } of cartItems) {
+      const currentOnHand = (product.store_stocks as any)?.on_hand ?? 0
+      const newOnHand = Math.max(0, currentOnHand - qty)
+      await supabase.from('store_stocks').update({ on_hand: newOnHand }).eq('product_id', product.id)
+    }
+
+    // Deduct balance
     const { data: account } = await supabase
       .from('store_accounts')
       .select('balance')
@@ -170,9 +182,11 @@ export default function CreateInvoice() {
 
     setSubmitting(false)
     setCart({})
-    Alert.alert(
-      '✓ Invoice Created',
-      `${cartCount} item${cartCount > 1 ? 's' : ''} • ৳${cartTotal.toFixed(2)} deducted\nNew balance: ৳${newBalance.toFixed(2)}`
+    fetchProducts()
+    showAlert(
+      'Invoice Created',
+      `${cartCount} item${cartCount > 1 ? 's' : ''} • ৳${cartTotal.toFixed(2)} deducted\nNew balance: ৳${newBalance.toFixed(2)}`,
+      'success'
     )
   }
 
@@ -286,6 +300,30 @@ export default function CreateInvoice() {
           />
         </View>
       )}
+
+      {/* Custom Alert Modal */}
+      <Modal visible={!!appAlert} transparent animationType="fade" onRequestClose={() => setAppAlert(null)}>
+        <View style={s.alertOverlay}>
+          <View style={s.alertCard}>
+            <View style={[s.alertIconWrap, {
+              backgroundColor: appAlert?.type === 'success' ? colors.green + '22'
+                : appAlert?.type === 'warning' ? colors.amber + '22'
+                : colors.red + '22'
+            }]}>
+              <Ionicons
+                name={appAlert?.type === 'success' ? 'checkmark-circle' : appAlert?.type === 'warning' ? 'alert-circle' : 'close-circle'}
+                size={40}
+                color={appAlert?.type === 'success' ? colors.green : appAlert?.type === 'warning' ? colors.amber : colors.red}
+              />
+            </View>
+            <Text style={s.alertTitle}>{appAlert?.title}</Text>
+            <Text style={s.alertMessage}>{appAlert?.message}</Text>
+            <TouchableOpacity style={s.alertBtn} onPress={() => setAppAlert(null)} activeOpacity={0.85}>
+              <Text style={s.alertBtnText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* Barcode Scanner Modal */}
       <Modal visible={scannerOpen} animationType="slide" onRequestClose={() => setScannerOpen(false)}>
@@ -410,4 +448,12 @@ const s = StyleSheet.create({
   scanCartText: { flex: 1, color: colors.white, fontSize: 14, fontWeight: '600' },
   scanDoneBtn: { backgroundColor: colors.gold, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8 },
   scanDoneText: { color: colors.navy, fontSize: 13, fontWeight: '800' },
+  // Custom alert
+  alertOverlay: { flex: 1, backgroundColor: '#00000099', alignItems: 'center', justifyContent: 'center', padding: 32 },
+  alertCard: { width: '100%', backgroundColor: colors.navyLight, borderRadius: 20, padding: 28, alignItems: 'center', borderWidth: 1, borderColor: colors.slate700 },
+  alertIconWrap: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  alertTitle: { color: colors.white, fontSize: 18, fontWeight: '800', marginBottom: 8, textAlign: 'center' },
+  alertMessage: { color: colors.slate400, fontSize: 13, textAlign: 'center', lineHeight: 20, marginBottom: 24 },
+  alertBtn: { backgroundColor: colors.gold, borderRadius: 12, paddingHorizontal: 48, paddingVertical: 13 },
+  alertBtnText: { color: colors.navy, fontSize: 15, fontWeight: '800' },
 })
