@@ -55,9 +55,10 @@ export default function HrmLayout() {
         }}
       />
       {/* Hidden admin screens */}
-      <Tabs.Screen name="kpi"       options={{ href: null }} />
-      <Tabs.Screen name="employees" options={{ href: null }} />
-      <Tabs.Screen name="weeks"     options={{ href: null }} />
+      <Tabs.Screen name="kpi"           options={{ href: null }} />
+      <Tabs.Screen name="employees"     options={{ href: null }} />
+      <Tabs.Screen name="weeks"         options={{ href: null }} />
+      <Tabs.Screen name="weekly-report" options={{ href: null, title: 'Weekly Report' }} />
     </Tabs>
   )
 }

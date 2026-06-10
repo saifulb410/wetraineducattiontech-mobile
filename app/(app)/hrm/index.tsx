@@ -202,6 +202,16 @@ export default function HrmDashboard() {
           </>
         )}
 
+        {/* Weekly Report */}
+        <Card style={s.taskCard}>
+          <View style={s.taskTitleRow}>
+            <Ionicons name="bar-chart-outline" size={18} color={colors.gold} />
+            <Text style={s.taskTitle}>Weekly Report</Text>
+          </View>
+          <Text style={s.taskSub}>Submit your weekly performance report including achievements and KPIs.</Text>
+          <Button title="Submit Weekly Report" onPress={() => router.push('/(app)/hrm/weekly-report' as any)} variant="secondary" />
+        </Card>
+
         {/* Task Reporting */}
         <Card style={s.taskCard}>
           <View style={s.taskTitleRow}>
