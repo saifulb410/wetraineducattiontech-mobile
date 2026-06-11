@@ -9,16 +9,16 @@ import { Button } from '@/components/ui/Button'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { colors } from '@/lib/theme'
 
-interface Invoice { id: string; amount: number; status: string; confirmed_at: string | null; created_at: string }
-interface ActivityEntry { id: string; type: string; amount: number; notes: string | null; created_at: string }
+interface Invoice { id: string; total_amount: number; status: string; confirmed_at: string | null; created_at: string }
+interface ActivityEntry { id: string; category: string; amount: number; reason: string | null; created_at: string }
 
 const ACTIVITY_COLORS: Record<string, string> = {
-  purchase: colors.red, penalty: colors.red, debit: colors.red,
-  credit: colors.green, deposit: colors.green, refund: colors.green,
+  PURCHASE: colors.red, PENALTY: colors.red, WITHDRAWAL: colors.red,
+  DEPOSIT: colors.green, REFUND: colors.green, ADJUSTMENT: colors.green,
 }
 const ACTIVITY_SIGN: Record<string, string> = {
-  purchase: '-', penalty: '-', debit: '-',
-  credit: '+', deposit: '+', refund: '+',
+  PURCHASE: '-', PENALTY: '-', WITHDRAWAL: '-',
+  DEPOSIT: '+', REFUND: '+', ADJUSTMENT: '+',
 }
 
 export default function StoreDashboard() {
@@ -45,34 +45,45 @@ export default function StoreDashboard() {
     const now = new Date()
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
 
-    const baseQueries = [
-      supabase.from('store_accounts').select('balance').eq('user_id', user.id).maybeSingle(),
-      supabase.from('store_invoices').select('id,amount,status,confirmed_at,created_at').eq('user_id', user.id).order('created_at', { ascending: false }).limit(5),
-      supabase.from('store_ledger').select('id,type,amount,notes,created_at').eq('user_id', user.id).order('created_at', { ascending: false }).limit(5),
-    ]
+    const [entriesRes, purchasesRes, activityRes] = await Promise.all([
+      supabase.from('store_account_entries').select('amount').eq('user_id', user.id),
+      supabase.from('store_invoices').select('id,total_amount,status,confirmed_at,created_at').eq('user_id', user.id).order('created_at', { ascending: false }).limit(5),
+      supabase.from('store_account_entries').select('id,category,amount,reason,created_at').eq('user_id', user.id).order('created_at', { ascending: false }).limit(5),
+    ])
 
-    const [balanceRes, purchasesRes, activityRes] = await Promise.all(baseQueries)
-    setBalance(balanceRes.data?.balance ?? 0)
+    // Compute balance from entries
+    const bal = (entriesRes.data ?? []).reduce((s: number, e: any) => s + (e.amount ?? 0), 0)
+    setBalance(bal)
 
     const purchases = (purchasesRes.data as Invoice[]) ?? []
     setRecentPurchases(purchases)
-    setPendingInvoices(purchases.filter(p => p.status === 'pending').length)
-    const thisMonth = purchases.filter(p => p.created_at >= monthStart && p.status === 'confirmed')
-    setMonthPurchases(thisMonth.reduce((s, p) => s + (p.amount ?? 0), 0))
+    setPendingInvoices(purchases.filter(p => p.status === 'PENDING').length)
+    const thisMonth = purchases.filter(p => p.created_at >= monthStart && p.status === 'CONFIRMED')
+    setMonthPurchases(thisMonth.reduce((s, p) => s + (p.total_amount ?? 0), 0))
     setMonthPurchaseCount(thisMonth.length)
     setRecentActivity((activityRes.data as ActivityEntry[]) ?? [])
 
     if (isAdmin) {
       const [productsRes, stocksRes, accountsRes, salesRes] = await Promise.all([
-        supabase.from('store_products').select('id', { count: 'exact' }).eq('status', 'active'),
-        supabase.from('store_stocks').select('on_hand').lte('on_hand', 5),
-        supabase.from('store_accounts').select('user_id', { count: 'exact' }),
-        supabase.from('store_invoices').select('amount').eq('status', 'confirmed').gte('created_at', monthStart),
+        supabase.from('store_products').select('id', { count: 'exact' }).eq('is_active', true),
+        supabase.from('store_stock_movements').select('product_id,quantity_delta'),
+        supabase.from('store_account_entries').select('user_id'),
+        supabase.from('store_invoices').select('total_amount').eq('status', 'CONFIRMED').gte('created_at', monthStart),
       ])
       setTotalProducts(productsRes.count ?? 0)
-      setLowStockCount((stocksRes.data ?? []).length)
-      setTotalAccounts(accountsRes.count ?? 0)
-      setMonthSales((salesRes.data ?? []).reduce((s: number, i: any) => s + (i.amount ?? 0), 0))
+
+      // Compute low-stock by aggregating movements per product
+      const movData = (stocksRes.data ?? []) as { product_id: string; quantity_delta: number }[]
+      const onHandMap: Record<string, number> = {}
+      movData.forEach(m => {
+        onHandMap[m.product_id] = (onHandMap[m.product_id] ?? 0) + m.quantity_delta
+      })
+      setLowStockCount(Object.values(onHandMap).filter(v => v <= 5).length)
+
+      // Distinct user IDs with any account entry
+      const uniqueAccounts = new Set((accountsRes.data ?? []).map((r: any) => r.user_id)).size
+      setTotalAccounts(uniqueAccounts)
+      setMonthSales((salesRes.data ?? []).reduce((s: number, i: any) => s + (i.total_amount ?? 0), 0))
     }
 
     setLoading(false)
@@ -255,7 +266,7 @@ export default function StoreDashboard() {
                 <Text style={s.empty}>No invoices yet.</Text>
               ) : (
                 recentPurchases.map(p => {
-                  const statusColors: Record<string, string> = { confirmed: colors.green, pending: colors.amber, cancelled: colors.red }
+                  const statusColors: Record<string, string> = { CONFIRMED: colors.green, PENDING: colors.amber, CANCELLED: colors.red }
                   const sc = statusColors[p.status] ?? colors.slate400
                   return (
                     <View key={p.id} style={s.row}>
@@ -266,7 +277,7 @@ export default function StoreDashboard() {
                         </Text>
                       </View>
                       <View style={s.rowRight}>
-                        <Text style={s.rowAmount}>৳{(p.amount ?? 0).toLocaleString()}</Text>
+                        <Text style={s.rowAmount}>৳{(p.total_amount ?? 0).toLocaleString()}</Text>
                         <View style={[s.badge, { backgroundColor: sc + '22' }]}>
                           <Text style={[s.badgeText, { color: sc }]}>{p.status}</Text>
                         </View>
@@ -289,15 +300,15 @@ export default function StoreDashboard() {
                 <Text style={s.empty}>No account activity yet.</Text>
               ) : (
                 recentActivity.map(a => {
-                  const color = ACTIVITY_COLORS[a.type] ?? colors.slate400
-                  const sign = ACTIVITY_SIGN[a.type] ?? ''
+                  const color = ACTIVITY_COLORS[a.category] ?? colors.slate400
+                  const sign = ACTIVITY_SIGN[a.category] ?? (a.amount >= 0 ? '+' : '')
                   return (
                     <View key={a.id} style={s.row}>
                       <View style={s.rowLeft}>
-                        <Text style={s.rowId}>{a.type.charAt(0).toUpperCase() + a.type.slice(1)}</Text>
-                        <Text style={s.rowDate} numberOfLines={1}>{a.notes ?? '—'}</Text>
+                        <Text style={s.rowId}>{a.category.charAt(0) + a.category.slice(1).toLowerCase()}</Text>
+                        <Text style={s.rowDate} numberOfLines={1}>{a.reason ?? '—'}</Text>
                       </View>
-                      <Text style={[s.activityAmount, { color }]}>{sign}৳{(a.amount ?? 0).toLocaleString()}</Text>
+                      <Text style={[s.activityAmount, { color }]}>{sign}৳{Math.abs(a.amount ?? 0).toLocaleString()}</Text>
                     </View>
                   )
                 })

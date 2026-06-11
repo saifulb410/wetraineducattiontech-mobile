@@ -15,10 +15,10 @@ import { colors } from '@/lib/theme'
 interface Product {
   id: string
   name: string
-  price: number
-  status: string
+  unit_price: number
+  is_active: boolean
   barcode: string | null
-  store_stocks: { on_hand: number } | null
+  store_stock_movements: { quantity_delta: number }[]
 }
 
 interface CartItem { product: Product; qty: number }
@@ -43,16 +43,20 @@ export default function CreateInvoice() {
     setAppAlert({ title, message, type })
 
   const fetchProducts = async () => {
-    const [productsRes, balanceRes] = await Promise.all([
-      supabase.from('store_products').select('id,name,price,status,barcode,store_stocks(on_hand)').eq('status', 'active').order('name'),
-      user ? supabase.from('store_accounts').select('balance').eq('user_id', user.id).maybeSingle() : Promise.resolve({ data: null }),
+    const [productsRes, entriesRes] = await Promise.all([
+      supabase.from('store_products').select('id,name,unit_price,is_active,barcode,store_stock_movements(quantity_delta)').eq('is_active', true).order('name'),
+      user ? supabase.from('store_account_entries').select('amount').eq('user_id', user.id) : Promise.resolve({ data: null }),
     ])
     setProducts((productsRes.data as Product[]) ?? [])
-    setBalance((balanceRes as any).data?.balance ?? 0)
+    const bal = ((entriesRes as any).data ?? []).reduce((s: number, e: any) => s + (e.amount ?? 0), 0)
+    setBalance(bal)
     setLoading(false)
   }
 
   useEffect(() => { fetchProducts() }, [user])
+
+  const getOnHand = (p: Product) =>
+    (p.store_stock_movements ?? []).reduce((s, m) => s + m.quantity_delta, 0)
 
   const filtered = products.filter(p =>
     p.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -60,7 +64,7 @@ export default function CreateInvoice() {
   )
 
   const cartItems = Object.values(cart)
-  const cartTotal = cartItems.reduce((s, { product, qty }) => s + product.price * qty, 0)
+  const cartTotal = cartItems.reduce((s, { product, qty }) => s + product.unit_price * qty, 0)
   const cartCount = cartItems.reduce((s, { qty }) => s + qty, 0)
 
   const addToCart = (product: Product) => {
@@ -101,18 +105,17 @@ export default function CreateInvoice() {
 
     const match = products.find(p => p.barcode === barcodeData)
     if (match) {
-      const onHand = (match.store_stocks as any)?.on_hand ?? 0
+      const onHand = getOnHand(match)
       if (onHand === 0) {
         setScanFeedback({ text: `"${match.name}" is out of stock`, success: false })
       } else {
         addToCart(match)
-        setScanFeedback({ text: `Added: ${match.name} (৳${match.price})`, success: true })
+        setScanFeedback({ text: `Added: ${match.name} (৳${match.unit_price})`, success: true })
       }
     } else {
       setScanFeedback({ text: `No product found for: ${barcodeData}`, success: false })
     }
 
-    // Allow scanning again after 2s
     setTimeout(() => {
       setScanned(false)
       setScanFeedback(null)
@@ -131,7 +134,7 @@ export default function CreateInvoice() {
 
     const { data: invoice, error: invErr } = await supabase
       .from('store_invoices')
-      .insert({ user_id: user.id, amount: cartTotal, status: 'confirmed', confirmed_at: new Date().toISOString() })
+      .insert({ user_id: user.id, total_amount: cartTotal, status: 'CONFIRMED', confirmed_at: new Date().toISOString() })
       .select()
       .single()
 
@@ -141,43 +144,37 @@ export default function CreateInvoice() {
       return
     }
 
-    await supabase.from('store_invoice_items').insert(
+    const { data: invoiceItems } = await supabase.from('store_invoice_items').insert(
       cartItems.map(({ product, qty }) => ({
         invoice_id: invoice.id,
         product_id: product.id,
-        product_name: product.name,
         quantity: qty,
-        unit_price: product.price,
-        total_price: product.price * qty,
+        unit_price: product.unit_price,
+        line_total: product.unit_price * qty,
       }))
-    )
+    ).select()
 
-    // Deduct stock for each item purchased
+    // Deduct stock for each item purchased via store_stock_movements
     for (const { product, qty } of cartItems) {
-      const currentOnHand = (product.store_stocks as any)?.on_hand ?? 0
-      const newOnHand = Math.max(0, currentOnHand - qty)
-      await supabase.from('store_stocks').update({ on_hand: newOnHand }).eq('product_id', product.id)
+      // Find the invoice_item id for this product
+      const itemRow = (invoiceItems ?? []).find((it: any) => it.product_id === product.id)
+      await supabase.from('store_stock_movements').insert({
+        product_id: product.id,
+        invoice_item_id: itemRow?.id ?? null,
+        movement_type: 'SALE',
+        quantity_delta: -qty,
+        actor_user_id: user.id,
+      })
     }
 
-    // Deduct balance
-    const { data: account } = await supabase
-      .from('store_accounts')
-      .select('balance')
-      .eq('user_id', user.id)
-      .maybeSingle()
-
-    const newBalance = (account?.balance ?? 0) - cartTotal
-    if (account) {
-      await supabase.from('store_accounts').update({ balance: newBalance }).eq('user_id', user.id)
-    } else {
-      await supabase.from('store_accounts').insert({ user_id: user.id, balance: newBalance })
-    }
-
-    await supabase.from('store_ledger').insert({
+    // Deduct balance via store_account_entries
+    const newBalance = balance - cartTotal
+    await supabase.from('store_account_entries').insert({
       user_id: user.id,
-      type: 'purchase',
-      amount: cartTotal,
-      notes: `Store invoice ${invoice.id.slice(0, 8).toUpperCase()}`,
+      amount: -cartTotal,
+      category: 'PURCHASE',
+      reason: `Store invoice ${invoice.id.slice(0, 8).toUpperCase()}`,
+      created_by: user.id,
     })
 
     setSubmitting(false)
@@ -228,7 +225,7 @@ export default function CreateInvoice() {
           ) : (
             filtered.map(product => {
               const qty = cart[product.id]?.qty ?? 0
-              const onHand = (product.store_stocks as any)?.on_hand ?? (product as any).store_stocks?.[0]?.on_hand ?? 99
+              const onHand = getOnHand(product)
               const outOfStock = onHand === 0
               return (
                 <Card key={product.id} style={[s.card, outOfStock && s.cardOut]}>
@@ -241,7 +238,7 @@ export default function CreateInvoice() {
                         {product.name}
                       </Text>
                       <View style={s.metaRow}>
-                        <Text style={s.price}>৳{product.price}</Text>
+                        <Text style={s.price}>৳{product.unit_price}</Text>
                         <View style={[s.stockBadge, { backgroundColor: outOfStock ? colors.red + '22' : colors.green + '22' }]}>
                           <Text style={[s.stockText, { color: outOfStock ? colors.red : colors.green }]}>
                             {outOfStock ? 'Out of stock' : `${onHand} left`}
@@ -336,7 +333,6 @@ export default function CreateInvoice() {
             </TouchableOpacity>
           </View>
 
-          {/* Camera + overlay in a relative container */}
           <View style={s.cameraContainer}>
             <CameraView
               style={StyleSheet.absoluteFill}
@@ -344,7 +340,6 @@ export default function CreateInvoice() {
               onBarcodeScanned={scanned ? undefined : handleBarcodeScan}
               barcodeScannerSettings={{ barcodeTypes: ['ean13', 'ean8', 'code128', 'code39', 'qr', 'upc_a', 'upc_e'] }}
             />
-            {/* Viewfinder overlay — absolutely positioned over camera */}
             <View style={s.overlay}>
               <View style={s.overlayTop} />
               <View style={s.overlayMiddle}>

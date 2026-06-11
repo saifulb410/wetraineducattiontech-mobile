@@ -10,11 +10,34 @@ import { useAuthContext } from '@/context/AuthContext'
 import { Card } from '@/components/ui/Card'
 import { colors } from '@/lib/theme'
 
-interface Week { id: string; label: string | null; start_date: string; end_date: string }
+// New schema for hrm_weeks
+interface Week {
+  id: string
+  week_key: string
+  friday_date: string
+  status: string
+  // derived
+  start_date: string
+  end_date: string
+}
+
+function deriveWeek(raw: any): Week {
+  const friday = new Date(raw.friday_date)
+  const monday = new Date(friday)
+  monday.setDate(friday.getDate() - 4)
+  return {
+    id: raw.id,
+    week_key: raw.week_key,
+    friday_date: raw.friday_date,
+    status: raw.status,
+    start_date: monday.toISOString().slice(0, 10),
+    end_date: raw.friday_date,
+  }
+}
 
 const REPORT_TYPES = [
-  { key: 'BD_STAFF',  label: 'BD Staff',  sub: 'With KPI tracking' },
-  { key: 'BD_LEADER', label: 'BD Leader', sub: 'No KPI required'   },
+  { key: 'BD_STAFF',  label: 'BD Staff',  sub: 'Full report' },
+  { key: 'BD_LEADER', label: 'BD Leader', sub: 'Summary only' },
 ] as const
 
 const MARKETS  = ['Dhaka', 'Chittagong', 'Sylhet', 'Khulna', 'Rajshahi', 'Other']
@@ -38,19 +61,23 @@ export default function WeeklyReport() {
   const [loadingWeeks, setLoadingWeeks] = useState(true)
   const [showMarketPicker, setShowMarketPicker] = useState(false)
   const [showRegionPicker, setShowRegionPicker] = useState(false)
+  // department_id for the new schema (NOT NULL required)
+  const [departmentId, setDepartmentId] = useState<string | null>(null)
 
   useEffect(() => {
     const load = async () => {
       if (!user) return
-      const [weeksRes, userRes] = await Promise.all([
-        supabase.from('hrm_weeks').select('id,label,start_date,end_date').order('start_date', { ascending: false }).limit(4),
-        supabase.from('hrm_users').select('full_name,employee_id').eq('id', user.id).maybeSingle(),
+      const [weeksRes, userRes, profileRes] = await Promise.all([
+        supabase.from('hrm_weeks').select('id,week_key,friday_date,status').order('friday_date', { ascending: false }).limit(4),
+        supabase.from('hrm_users').select('employee_id,department_id').eq('id', user.id).maybeSingle(),
+        supabase.from('profiles').select('full_name').eq('id', user.id).maybeSingle(),
       ])
-      const w = (weeksRes.data as Week[]) ?? []
+      const w = ((weeksRes.data ?? []) as any[]).map(deriveWeek)
       setWeeks(w)
       if (w.length > 0) setSelectedWeekId(w[0].id)
-      if (userRes.data?.full_name) setFullName(userRes.data.full_name)
       if (userRes.data?.employee_id) setEmployeeId(userRes.data.employee_id)
+      if (userRes.data?.department_id) setDepartmentId(userRes.data.department_id)
+      if (profileRes.data?.full_name) setFullName(profileRes.data.full_name)
       setLoadingWeeks(false)
     }
     load()
@@ -67,18 +94,21 @@ export default function WeeklyReport() {
     if (!fullName.trim()) return Alert.alert('Error', 'Full name is required.')
     if (!roleTitle.trim()) return Alert.alert('Error', 'Role / Title is required.')
     if (!keyAchievements.trim()) return Alert.alert('Error', 'Key Achievements cannot be empty.')
+    if (keyAchievements.trim().length > 500) return Alert.alert('Error', 'Key Achievements must be 500 characters or less.')
+    if (!departmentId) return Alert.alert('Error', 'Department not found. Please contact your admin.')
 
     setSubmitting(true)
     const { error } = await supabase.from('hrm_weekly_reports').insert({
-      user_id: user!.id,
+      subject_user_id: user!.id,
       week_id: selectedWeekId,
+      department_id: departmentId,
       report_type: reportType,
       employee_id: employeeId.trim() || null,
       full_name: fullName.trim(),
       role_title: roleTitle.trim(),
       market: market.trim() || null,
       region: region.trim() || null,
-      key_achievements: keyAchievements.trim(),
+      achievement_summary: keyAchievements.trim(),
     })
     setSubmitting(false)
 
@@ -231,18 +261,21 @@ export default function WeeklyReport() {
       </Card>
 
       {/* Key Achievements */}
-      <Text style={s.sectionLabel}>KEY ACHIEVEMENTS *</Text>
+      <Text style={s.sectionLabel}>KEY ACHIEVEMENTS * (max 500 chars)</Text>
       <Card style={s.achieveCard}>
         <TextInput
           style={s.textarea}
           value={keyAchievements}
-          onChangeText={setKeyAchievements}
+          onChangeText={v => setKeyAchievements(v.slice(0, 500))}
           placeholder={"Describe your key achievements this week...\n\n• Achievement 1\n• Achievement 2"}
           placeholderTextColor={colors.slate600}
           multiline
           numberOfLines={6}
           textAlignVertical="top"
         />
+        <Text style={[s.charCount, keyAchievements.length > 480 && { color: colors.amber }]}>
+          {keyAchievements.length}/500
+        </Text>
       </Card>
 
       {/* Submit */}
@@ -308,6 +341,7 @@ const s = StyleSheet.create({
   // Achievements
   achieveCard: { marginBottom: 24, padding: 14 },
   textarea: { color: colors.white, fontSize: 13, lineHeight: 22, minHeight: 130 },
+  charCount: { color: colors.slate500, fontSize: 11, textAlign: 'right', marginTop: 6 },
 
   // Submit
   submitBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.gold, borderRadius: 14, paddingVertical: 16 },

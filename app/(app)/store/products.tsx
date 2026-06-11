@@ -18,14 +18,14 @@ const SCREEN_H = Dimensions.get('window').height
 interface Product {
   id: string
   name: string
-  price: number
-  status: string
+  unit_price: number
+  is_active: boolean
   barcode: string | null
-  store_stocks: { on_hand: number } | null
+  store_stock_movements: { quantity_delta: number }[]
 }
 
 export default function Products() {
-  const { roles } = useAuthContext()
+  const { user, roles } = useAuthContext()
   const isAdmin = roles?.storeRole === 'ADMIN'
 
   const [products, setProducts] = useState<Product[]>([])
@@ -37,7 +37,7 @@ export default function Products() {
   const [formName, setFormName] = useState('')
   const [formPrice, setFormPrice] = useState('')
   const [formBarcode, setFormBarcode] = useState('')
-  const [formStatus, setFormStatus] = useState<'active' | 'inactive'>('active')
+  const [formActive, setFormActive] = useState(true)
   const [formQty, setFormQty] = useState('0')
   const [saving, setSaving] = useState(false)
   const [barcodeScanning, setBarcodeScanning] = useState(false)
@@ -63,7 +63,7 @@ export default function Products() {
   const fetchProducts = async () => {
     const { data } = await supabase
       .from('store_products')
-      .select('id,name,price,status,barcode,store_stocks(on_hand)')
+      .select('id,name,unit_price,is_active,barcode,store_stock_movements(quantity_delta)')
       .order('name')
     setProducts((data as Product[]) ?? [])
     setLoading(false)
@@ -75,17 +75,17 @@ export default function Products() {
 
   const openAdd = () => {
     setEditTarget(null)
-    setFormName(''); setFormPrice(''); setFormBarcode(''); setFormStatus('active'); setFormQty('0')
+    setFormName(''); setFormPrice(''); setFormBarcode(''); setFormActive(true); setFormQty('0')
     setShowForm(true)
   }
 
   const openEdit = (p: Product) => {
     setEditTarget(p)
     setFormName(p.name)
-    setFormPrice(String(p.price))
+    setFormPrice(String(p.unit_price))
     setFormBarcode(p.barcode ?? '')
-    setFormStatus(p.status as any)
-    const onHand = (p.store_stocks as any)?.on_hand ?? 0
+    setFormActive(p.is_active)
+    const onHand = (p.store_stock_movements ?? []).reduce((s, m) => s + m.quantity_delta, 0)
     setFormQty(String(onHand))
     setShowForm(true)
   }
@@ -101,27 +101,48 @@ export default function Products() {
     try {
       if (editTarget) {
         const { error: updateErr } = await supabase.from('store_products').update({
-          name: formName.trim(), price, barcode: formBarcode.trim() || null, status: formStatus,
+          name: formName.trim(), unit_price: price, barcode: formBarcode.trim() || null, is_active: formActive,
         }).eq('id', editTarget.id)
         if (updateErr) throw updateErr
 
-        const { data: existing } = await supabase.from('store_stocks').select('id').eq('product_id', editTarget.id).maybeSingle()
-        if (existing) {
-          const { error: sErr } = await supabase.from('store_stocks').update({ on_hand: qty }).eq('product_id', editTarget.id)
-          if (sErr) throw sErr
-        } else {
-          const { error: sErr } = await supabase.from('store_stocks').insert({ product_id: editTarget.id, on_hand: qty })
-          if (sErr) throw sErr
+        // If qty changed, add a stock entry + movement for the difference
+        const currentOnHand = (editTarget.store_stock_movements ?? []).reduce((s, m) => s + m.quantity_delta, 0)
+        const delta = qty - currentOnHand
+        if (delta !== 0 && user) {
+          const { data: entry, error: entryErr } = await supabase
+            .from('store_stock_entries')
+            .insert({ product_id: editTarget.id, quantity: Math.abs(delta), entered_by: user.id, note: 'Stock adjustment' })
+            .select().single()
+          if (entryErr) throw entryErr
+          const { error: movErr } = await supabase.from('store_stock_movements').insert({
+            product_id: editTarget.id,
+            stock_entry_id: entry.id,
+            movement_type: 'STOCK_IN',
+            quantity_delta: delta,
+            actor_user_id: user.id,
+          })
+          if (movErr) throw movErr
         }
       } else {
         const { data: newProduct, error: insertErr } = await supabase.from('store_products').insert({
-          name: formName.trim(), price, barcode: formBarcode.trim() || null, status: formStatus,
+          name: formName.trim(), unit_price: price, barcode: formBarcode.trim() || null, is_active: formActive,
         }).select().single()
         if (insertErr) throw insertErr
 
-        if (newProduct) {
-          const { error: sErr } = await supabase.from('store_stocks').insert({ product_id: newProduct.id, on_hand: qty })
-          if (sErr) throw sErr
+        if (newProduct && qty > 0 && user) {
+          const { data: entry, error: entryErr } = await supabase
+            .from('store_stock_entries')
+            .insert({ product_id: newProduct.id, quantity: qty, entered_by: user.id, note: 'Initial stock' })
+            .select().single()
+          if (entryErr) throw entryErr
+          const { error: movErr } = await supabase.from('store_stock_movements').insert({
+            product_id: newProduct.id,
+            stock_entry_id: entry.id,
+            movement_type: 'STOCK_IN',
+            quantity_delta: qty,
+            actor_user_id: user.id,
+          })
+          if (movErr) throw movErr
         }
       }
       setShowForm(false)
@@ -191,8 +212,8 @@ export default function Products() {
             </View>
           ) : (
             filtered.map(p => {
-              const onHand = (p.store_stocks as any)?.on_hand ?? (p as any).store_stocks?.[0]?.on_hand ?? 0
-              const isActive = p.status === 'active'
+              const onHand = (p.store_stock_movements ?? []).reduce((s, m) => s + m.quantity_delta, 0)
+              const isActive = p.is_active
               const lowStock = onHand <= 5 && onHand > 0
               const outOfStock = onHand === 0
               return (
@@ -204,7 +225,7 @@ export default function Products() {
                     <View style={{ flex: 1 }}>
                       <Text style={[s.name, !isActive && { color: colors.slate500 }]} numberOfLines={1}>{p.name}</Text>
                       <View style={s.metaRow}>
-                        <Text style={s.price}>৳{p.price}</Text>
+                        <Text style={s.price}>৳{p.unit_price}</Text>
                         {p.barcode ? <Text style={s.barcode}>{p.barcode}</Text> : null}
                         <View style={[s.badge, {
                           backgroundColor: outOfStock ? colors.red + '22' : lowStock ? colors.amber + '22' : colors.green + '22'
@@ -319,14 +340,14 @@ export default function Products() {
 
               <Text style={s.label}>Status</Text>
               <View style={s.statusRow}>
-                {(['active', 'inactive'] as const).map(st => (
+                {([true, false] as const).map(active => (
                   <TouchableOpacity
-                    key={st}
-                    style={[s.statusChip, formStatus === st && s.statusChipActive]}
-                    onPress={() => setFormStatus(st)}
+                    key={String(active)}
+                    style={[s.statusChip, formActive === active && s.statusChipActive]}
+                    onPress={() => setFormActive(active)}
                   >
-                    <Text style={[s.statusChipText, formStatus === st && s.statusChipTextActive]}>
-                      {st.charAt(0).toUpperCase() + st.slice(1)}
+                    <Text style={[s.statusChipText, formActive === active && s.statusChipTextActive]}>
+                      {active ? 'Active' : 'Inactive'}
                     </Text>
                   </TouchableOpacity>
                 ))}

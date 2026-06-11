@@ -18,12 +18,12 @@ const CATEGORIES = [
 
 interface TaskReport {
   id: string
-  title: string | null
+  task_title: string | null
   category: string | null
   notes: string | null
-  content: string | null
   submitted_at: string
-  hrm_users?: { full_name: string | null } | null
+  author_user_id: string | null
+  profiles?: { full_name: string | null } | null
 }
 
 export default function Tasks() {
@@ -43,15 +43,28 @@ export default function Tasks() {
     if (isAdmin) {
       const { data } = await supabase
         .from('hrm_task_reports')
-        .select('id,title,category,notes,content,submitted_at,hrm_users(full_name)')
+        .select('id,task_title,category,notes,submitted_at,author_user_id')
         .order('submitted_at', { ascending: false })
         .limit(50)
-      setReports((data as TaskReport[]) ?? [])
+      const rows = (data as TaskReport[]) ?? []
+      // Fetch profile names for the authors
+      const authorIds = [...new Set(rows.map(r => r.author_user_id).filter(Boolean))]
+      if (authorIds.length > 0) {
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('id,full_name')
+          .in('id', authorIds as string[])
+        const profileMap: Record<string, string | null> = {}
+        ;(profileData ?? []).forEach((p: any) => { profileMap[p.id] = p.full_name })
+        setReports(rows.map(r => ({ ...r, profiles: r.author_user_id ? { full_name: profileMap[r.author_user_id] ?? null } : null })))
+      } else {
+        setReports(rows)
+      }
     } else {
       const { data } = await supabase
         .from('hrm_task_reports')
-        .select('id,title,category,notes,content,submitted_at')
-        .eq('user_id', user.id)
+        .select('id,task_title,category,notes,submitted_at,author_user_id')
+        .eq('author_user_id', user.id)
         .order('submitted_at', { ascending: false })
         .limit(30)
       setReports((data as TaskReport[]) ?? [])
@@ -67,8 +80,8 @@ export default function Tasks() {
     if (!form.title.trim()) { Alert.alert('Error', 'Task title is required.'); return }
     setSubmitting(true)
     const { error } = await supabase.from('hrm_task_reports').insert({
-      user_id: user!.id,
-      title: form.title.trim(),
+      author_user_id: user!.id,
+      task_title: form.title.trim(),
       category: form.category,
       notes: form.notes.trim() || null,
       submitted_at: new Date().toISOString(),
@@ -161,7 +174,7 @@ export default function Tasks() {
         ) : (
           reports.map(r => {
             const catColor = CATEGORY_COLORS[r.category ?? ''] ?? colors.slate500
-            const displayTitle = r.title || r.content?.slice(0, 50) || 'Untitled'
+            const displayTitle = r.task_title || 'Untitled'
             return (
               <Card key={r.id} style={s.reportCard}>
                 <View style={s.reportTop}>
@@ -173,10 +186,10 @@ export default function Tasks() {
                   </Text>
                 </View>
 
-                {isAdmin && r.hrm_users?.full_name && (
+                {isAdmin && r.profiles?.full_name && (
                   <View style={s.employeeRow}>
                     <Ionicons name="person-outline" size={12} color={colors.gold} />
-                    <Text style={s.employeeName}>{r.hrm_users.full_name}</Text>
+                    <Text style={s.employeeName}>{r.profiles.full_name}</Text>
                   </View>
                 )}
 

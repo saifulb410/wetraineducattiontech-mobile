@@ -12,7 +12,34 @@ import { Button } from '@/components/ui/Button'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { colors } from '@/lib/theme'
 
-interface Week { id: string; label: string | null; start_date: string; end_date: string; is_locked: boolean }
+// New schema: week_key (text), friday_date (date), status (OPEN | CLOSED)
+interface Week {
+  id: string
+  week_key: string
+  friday_date: string
+  status: string
+  // derived
+  label: string
+  start_date: string
+  end_date: string
+  is_locked: boolean
+}
+
+function deriveWeek(raw: any): Week {
+  const friday = new Date(raw.friday_date)
+  const monday = new Date(friday)
+  monday.setDate(friday.getDate() - 4)
+  return {
+    id: raw.id,
+    week_key: raw.week_key,
+    friday_date: raw.friday_date,
+    status: raw.status,
+    label: raw.week_key,
+    start_date: monday.toISOString().slice(0, 10),
+    end_date: raw.friday_date,
+    is_locked: raw.status !== 'OPEN',
+  }
+}
 
 export default function HrmWeeks() {
   const router = useRouter()
@@ -25,14 +52,15 @@ export default function HrmWeeks() {
   const [toggling, setToggling] = useState<string | null>(null)
   const [showAdd, setShowAdd] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState({ label: '', start_date: '', end_date: '' })
+  // form: week_key (label) and friday_date (YYYY-MM-DD, the end of the week)
+  const [form, setForm] = useState({ week_key: '', friday_date: '' })
 
   const fetchWeeks = async () => {
     const { data } = await supabase
       .from('hrm_weeks')
-      .select('id,label,start_date,end_date,is_locked')
-      .order('start_date', { ascending: false })
-    setWeeks((data as Week[]) ?? [])
+      .select('id,week_key,friday_date,status')
+      .order('friday_date', { ascending: false })
+    setWeeks(((data ?? []) as any[]).map(deriveWeek))
     setLoading(false)
     setRefreshing(false)
   }
@@ -42,29 +70,33 @@ export default function HrmWeeks() {
 
   const toggleLock = async (w: Week) => {
     setToggling(w.id)
-    const { error } = await supabase.from('hrm_weeks').update({ is_locked: !w.is_locked }).eq('id', w.id)
+    const newStatus = w.status === 'OPEN' ? 'CLOSED' : 'OPEN'
+    const { error } = await supabase.from('hrm_weeks').update({ status: newStatus }).eq('id', w.id)
     setToggling(null)
     if (error) Alert.alert('Error', error.message)
-    else setWeeks(prev => prev.map(x => x.id === w.id ? { ...x, is_locked: !w.is_locked } : x))
+    else setWeeks(prev => prev.map(x => x.id === w.id ? deriveWeek({ ...x, status: newStatus }) : x))
   }
 
   const handleAdd = async () => {
-    if (!form.start_date.trim() || !form.end_date.trim()) {
-      Alert.alert('Error', 'Start and end date are required (YYYY-MM-DD format).')
+    if (!form.week_key.trim()) {
+      Alert.alert('Error', 'Week key / label is required (e.g. "W22-2026").')
+      return
+    }
+    if (!form.friday_date.trim() || !/^\d{4}-\d{2}-\d{2}$/.test(form.friday_date.trim())) {
+      Alert.alert('Error', 'Friday date is required in YYYY-MM-DD format.')
       return
     }
     setSaving(true)
     const { error } = await supabase.from('hrm_weeks').insert({
-      label: form.label.trim() || null,
-      start_date: form.start_date.trim(),
-      end_date: form.end_date.trim(),
-      is_locked: false,
+      week_key: form.week_key.trim(),
+      friday_date: form.friday_date.trim(),
+      status: 'OPEN',
     })
     setSaving(false)
     if (error) Alert.alert('Error', error.message)
     else {
       setShowAdd(false)
-      setForm({ label: '', start_date: '', end_date: '' })
+      setForm({ week_key: '', friday_date: '' })
       fetchWeeks()
     }
   }
@@ -100,32 +132,24 @@ export default function HrmWeeks() {
           <Card style={s.addForm}>
             <Text style={s.formTitle}>Create New Week</Text>
 
-            <Text style={s.label}>Label (optional)</Text>
+            <Text style={s.label}>Week Key / Label *</Text>
             <TextInput
               style={s.input}
-              placeholder="e.g. Week 1 – May 2026"
+              placeholder="e.g. W22-2026 or Week 22"
               placeholderTextColor={colors.slate500}
-              value={form.label}
-              onChangeText={v => setForm(f => ({ ...f, label: v }))}
+              value={form.week_key}
+              onChangeText={v => setForm(f => ({ ...f, week_key: v }))}
             />
 
-            <Text style={s.label}>Start Date *</Text>
+            <Text style={s.label}>Friday Date * (end of week)</Text>
             <TextInput
               style={s.input}
               placeholder="YYYY-MM-DD"
               placeholderTextColor={colors.slate500}
-              value={form.start_date}
-              onChangeText={v => setForm(f => ({ ...f, start_date: v }))}
+              value={form.friday_date}
+              onChangeText={v => setForm(f => ({ ...f, friday_date: v }))}
             />
-
-            <Text style={s.label}>End Date *</Text>
-            <TextInput
-              style={s.input}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor={colors.slate500}
-              value={form.end_date}
-              onChangeText={v => setForm(f => ({ ...f, end_date: v }))}
-            />
+            <Text style={s.hint}>The week span Monday–Friday will be computed automatically.</Text>
 
             <View style={s.formBtns}>
               <TouchableOpacity style={s.cancelBtn} onPress={() => setShowAdd(false)}>
@@ -151,7 +175,7 @@ export default function HrmWeeks() {
               <Card key={w.id} style={s.weekCard}>
                 <View style={s.weekTop}>
                   <View style={{ flex: 1 }}>
-                    <Text style={s.weekLabel}>{w.label ?? 'Unlabeled Week'}</Text>
+                    <Text style={s.weekLabel}>{w.label}</Text>
                     <Text style={s.weekDates}>{start} — {end}</Text>
                   </View>
                   <TouchableOpacity
@@ -191,6 +215,7 @@ const s = StyleSheet.create({
   formTitle: { color: colors.white, fontWeight: '700', fontSize: 16, marginBottom: 14 },
   label: { color: colors.slate300, fontSize: 13, fontWeight: '600', marginBottom: 6 },
   input: { backgroundColor: colors.navy, color: colors.white, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, borderWidth: 1, borderColor: colors.slate700, fontSize: 15, marginBottom: 14 },
+  hint: { color: colors.slate500, fontSize: 11, marginTop: -10, marginBottom: 14 },
   formBtns: { flexDirection: 'row', gap: 10, alignItems: 'center' },
   cancelBtn: { flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 10, borderWidth: 1, borderColor: colors.slate700 },
   cancelText: { color: colors.slate400, fontWeight: '600' },

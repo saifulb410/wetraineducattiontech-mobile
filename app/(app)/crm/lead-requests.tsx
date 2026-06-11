@@ -11,23 +11,25 @@ import { Card } from '@/components/ui/Card'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { colors } from '@/lib/theme'
 
+// lead_payload is jsonb: { lead_name, phone, source }
 interface LeadRequest {
   id: string
-  lead_name: string | null
-  phone: string | null
-  source: string | null
+  lead_payload: { lead_name?: string; phone?: string; source?: string } | null
   status: string
   created_at: string
-  crm_users?: { full_name: string | null } | null
+  requester_id: string | null
+  profiles?: { full_name: string | null } | null
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  pending: colors.amber,
-  approved: colors.green,
-  rejected: colors.red,
+  PENDING: colors.amber,
+  APPROVED: colors.green,
+  DECLINED: colors.red,
 }
 
-const FILTERS = ['All', 'pending', 'approved', 'rejected']
+const FILTERS = ['All', 'PENDING', 'APPROVED', 'DECLINED']
+
+const statusLabel = (s: string) => s.charAt(0) + s.slice(1).toLowerCase()
 
 export default function LeadRequests() {
   const router = useRouter()
@@ -35,7 +37,7 @@ export default function LeadRequests() {
   const isAdmin = roles?.crmRole === 'ADMIN'
 
   const [all, setAll] = useState<LeadRequest[]>([])
-  const [statusFilter, setStatusFilter] = useState('pending')
+  const [statusFilter, setStatusFilter] = useState('PENDING')
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [updating, setUpdating] = useState<string | null>(null)
@@ -43,9 +45,24 @@ export default function LeadRequests() {
   const fetchData = async () => {
     const { data } = await supabase
       .from('crm_lead_requests')
-      .select('id,lead_name,phone,source,status,created_at,crm_users!requester_id(full_name)')
+      .select('id,lead_payload,status,created_at,requester_id')
       .order('created_at', { ascending: false })
-    setAll((data as LeadRequest[]) ?? [])
+
+    const rows = (data as LeadRequest[]) ?? []
+    // Fetch requester profiles
+    const requesterIds = [...new Set(rows.map(r => r.requester_id).filter(Boolean))] as string[]
+    if (requesterIds.length > 0) {
+      const { data: profileData } = await supabase.from('profiles').select('id,full_name').in('id', requesterIds)
+      const profileMap: Record<string, string | null> = {}
+      ;(profileData ?? []).forEach((p: any) => { profileMap[p.id] = p.full_name })
+      setAll(rows.map(r => ({
+        ...r,
+        profiles: r.requester_id ? { full_name: profileMap[r.requester_id] ?? null } : null,
+      })))
+    } else {
+      setAll(rows)
+    }
+
     setLoading(false)
     setRefreshing(false)
   }
@@ -55,7 +72,7 @@ export default function LeadRequests() {
 
   const filtered = statusFilter === 'All' ? all : all.filter(r => r.status === statusFilter)
 
-  const handleUpdate = async (id: string, newStatus: 'approved' | 'rejected') => {
+  const handleUpdate = async (id: string, newStatus: 'APPROVED' | 'DECLINED') => {
     setUpdating(id)
     const { error } = await supabase
       .from('crm_lead_requests')
@@ -89,7 +106,7 @@ export default function LeadRequests() {
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={s.pageTitle}>Lead Requests</Text>
-            <Text style={s.pageSub}>{all.filter(r => r.status === 'pending').length} pending review</Text>
+            <Text style={s.pageSub}>{all.filter(r => r.status === 'PENDING').length} pending review</Text>
           </View>
         </View>
 
@@ -102,7 +119,7 @@ export default function LeadRequests() {
               style={[s.chip, statusFilter === f && s.chipActive]}
             >
               <Text style={[s.chipText, statusFilter === f && s.chipTextActive]}>
-                {f.charAt(0).toUpperCase() + f.slice(1)}
+                {f === 'All' ? 'All' : statusLabel(f)}
               </Text>
             </TouchableOpacity>
           ))}
@@ -111,34 +128,38 @@ export default function LeadRequests() {
         {filtered.length === 0 ? (
           <Card style={s.emptyCard}>
             <Ionicons name="document-text-outline" size={40} color={colors.slate600} />
-            <Text style={s.emptyText}>No {statusFilter === 'All' ? '' : statusFilter} requests</Text>
+            <Text style={s.emptyText}>No {statusFilter === 'All' ? '' : statusLabel(statusFilter)} requests</Text>
           </Card>
         ) : (
           filtered.map(req => {
             const statusColor = STATUS_COLORS[req.status] ?? colors.slate400
-            const isPending = req.status === 'pending'
+            const isPending = req.status === 'PENDING'
+            const payload = req.lead_payload ?? {}
+            const leadName = payload.lead_name || '—'
+            const leadPhone = payload.phone || '—'
+            const leadSource = payload.source || null
             return (
               <Card key={req.id} style={s.card}>
                 <View style={s.cardTop}>
                   <View style={s.leadInfo}>
-                    <Text style={s.leadName}>{req.lead_name || '—'}</Text>
-                    <Text style={s.leadPhone}>{req.phone || '—'}</Text>
+                    <Text style={s.leadName}>{leadName}</Text>
+                    <Text style={s.leadPhone}>{leadPhone}</Text>
                   </View>
                   <View style={[s.badge, { backgroundColor: statusColor + '22' }]}>
-                    <Text style={[s.badgeText, { color: statusColor }]}>{req.status}</Text>
+                    <Text style={[s.badgeText, { color: statusColor }]}>{statusLabel(req.status)}</Text>
                   </View>
                 </View>
 
                 <View style={s.metaRow}>
-                  {req.source && (
+                  {leadSource && (
                     <View style={s.sourceBadge}>
-                      <Text style={s.sourceText}>{req.source}</Text>
+                      <Text style={s.sourceText}>{leadSource}</Text>
                     </View>
                   )}
-                  {req.crm_users?.full_name && (
+                  {req.profiles?.full_name && (
                     <View style={s.requesterBadge}>
                       <Ionicons name="person-outline" size={10} color={colors.blue} />
-                      <Text style={s.requesterText}>{req.crm_users.full_name}</Text>
+                      <Text style={s.requesterText}>{req.profiles.full_name}</Text>
                     </View>
                   )}
                   <Text style={s.dateText}>
@@ -150,7 +171,7 @@ export default function LeadRequests() {
                   <View style={s.actions}>
                     <TouchableOpacity
                       style={[s.actionBtn, { backgroundColor: colors.green + '22', borderColor: colors.green + '44' }]}
-                      onPress={() => handleUpdate(req.id, 'approved')}
+                      onPress={() => handleUpdate(req.id, 'APPROVED')}
                       disabled={updating === req.id}
                     >
                       <Ionicons name="checkmark" size={14} color={colors.green} />
@@ -158,11 +179,11 @@ export default function LeadRequests() {
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[s.actionBtn, { backgroundColor: colors.red + '22', borderColor: colors.red + '44' }]}
-                      onPress={() => handleUpdate(req.id, 'rejected')}
+                      onPress={() => handleUpdate(req.id, 'DECLINED')}
                       disabled={updating === req.id}
                     >
                       <Ionicons name="close" size={14} color={colors.red} />
-                      <Text style={[s.actionText, { color: colors.red }]}>Reject</Text>
+                      <Text style={[s.actionText, { color: colors.red }]}>Decline</Text>
                     </TouchableOpacity>
                   </View>
                 )}

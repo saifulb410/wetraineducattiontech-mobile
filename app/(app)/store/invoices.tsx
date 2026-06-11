@@ -13,7 +13,7 @@ import { colors } from '@/lib/theme'
 
 interface Invoice {
   id: string
-  amount: number
+  total_amount: number
   status: string
   notes: string | null
   confirmed_at: string | null
@@ -22,20 +22,19 @@ interface Invoice {
 
 interface InvoiceItem {
   id: string
-  product_name: string
   quantity: number
   unit_price: number
-  total_price: number
+  line_total: number
+  store_products: { name: string } | null
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  confirmed: colors.green,
-  pending: colors.amber,
-  cancelled: colors.red,
-  rejected: colors.red,
+  CONFIRMED: colors.green,
+  PENDING: colors.amber,
+  CANCELLED: colors.red,
 }
 
-const FILTERS = ['All', 'pending', 'confirmed', 'cancelled']
+const FILTERS = ['All', 'PENDING', 'CONFIRMED', 'CANCELLED']
 
 export default function Invoices() {
   const router = useRouter()
@@ -54,7 +53,7 @@ export default function Invoices() {
     if (!user) return
     let q = supabase
       .from('store_invoices')
-      .select('id,amount,status,notes,confirmed_at,created_at')
+      .select('id,total_amount,status,notes,confirmed_at,created_at')
       .order('created_at', { ascending: false })
       .limit(100)
 
@@ -72,9 +71,9 @@ export default function Invoices() {
     setDetailLoading(true)
     const { data } = await supabase
       .from('store_invoice_items')
-      .select('id,product_name,quantity,unit_price,total_price')
+      .select('id,quantity,unit_price,line_total,store_products(name)')
       .eq('invoice_id', inv.id)
-      .order('product_name')
+      .order('id')
     setDetailItems((data as InvoiceItem[]) ?? [])
     setDetailLoading(false)
   }
@@ -83,8 +82,12 @@ export default function Invoices() {
   const onRefresh = () => { setRefreshing(true); fetchData() }
 
   const filtered = filter === 'All' ? all : all.filter(i => i.status === filter)
+  const totalAmount = filtered.reduce((s, i) => s + (i.total_amount ?? 0), 0)
 
-  const totalAmount = filtered.reduce((s, i) => s + (i.amount ?? 0), 0)
+  const filterLabel = (f: string) => {
+    if (f === 'All') return 'All'
+    return f.charAt(0) + f.slice(1).toLowerCase()
+  }
 
   if (loading) return <LoadingScreen />
 
@@ -96,7 +99,7 @@ export default function Invoices() {
         <Card style={s.summaryCard}>
           <View style={s.summaryRow}>
             <View>
-              <Text style={s.summaryLabel}>{filter === 'All' ? 'Total Invoices' : `${filter.charAt(0).toUpperCase() + filter.slice(1)} Invoices`}</Text>
+              <Text style={s.summaryLabel}>{filter === 'All' ? 'Total Invoices' : `${filterLabel(filter)} Invoices`}</Text>
               <Text style={s.summaryCount}>{filtered.length} invoice{filtered.length !== 1 ? 's' : ''}</Text>
             </View>
             <View style={s.summaryRight}>
@@ -115,7 +118,7 @@ export default function Invoices() {
               onPress={() => setFilter(f)}
             >
               <Text style={[s.chipText, filter === f && s.chipTextActive]}>
-                {f === 'All' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
+                {filterLabel(f)}
               </Text>
             </TouchableOpacity>
           ))}
@@ -125,7 +128,7 @@ export default function Invoices() {
         {filtered.length === 0 ? (
           <Card style={s.emptyCard}>
             <Ionicons name="receipt-outline" size={40} color={colors.slate600} />
-            <Text style={s.emptyText}>No {filter === 'All' ? '' : filter} invoices</Text>
+            <Text style={s.emptyText}>No {filter === 'All' ? '' : filterLabel(filter)} invoices</Text>
           </Card>
         ) : (
           filtered.map(inv => {
@@ -142,9 +145,9 @@ export default function Invoices() {
                     </Text>
                   </View>
                   <View>
-                    <Text style={s.invoiceAmount}>৳{(inv.amount ?? 0).toLocaleString()}</Text>
+                    <Text style={s.invoiceAmount}>৳{(inv.total_amount ?? 0).toLocaleString()}</Text>
                     <View style={[s.statusBadge, { backgroundColor: statusColor + '22' }]}>
-                      <Text style={[s.statusText, { color: statusColor }]}>{inv.status}</Text>
+                      <Text style={[s.statusText, { color: statusColor }]}>{filterLabel(inv.status)}</Text>
                     </View>
                   </View>
                 </View>
@@ -153,7 +156,7 @@ export default function Invoices() {
                   <Text style={s.notes} numberOfLines={2}>{inv.notes}</Text>
                 ) : null}
 
-                {inv.confirmed_at && inv.status === 'confirmed' && (
+                {inv.confirmed_at && inv.status === 'CONFIRMED' && (
                   <View style={s.confirmedRow}>
                     <Ionicons name="checkmark-circle" size={12} color={colors.green} />
                     <Text style={s.confirmedText}>
@@ -188,7 +191,7 @@ export default function Invoices() {
             <View style={{ alignItems: 'flex-end', gap: 4 }}>
               {detailInv && (
                 <View style={[s.statusBadge, { backgroundColor: (STATUS_COLORS[detailInv.status] ?? colors.slate400) + '22' }]}>
-                  <Text style={[s.statusText, { color: STATUS_COLORS[detailInv.status] ?? colors.slate400 }]}>{detailInv.status}</Text>
+                  <Text style={[s.statusText, { color: STATUS_COLORS[detailInv.status] ?? colors.slate400 }]}>{filterLabel(detailInv.status)}</Text>
                 </View>
               )}
               <TouchableOpacity onPress={() => setDetailInv(null)}>
@@ -209,10 +212,10 @@ export default function Invoices() {
                 <View key={item.id} style={[s.itemRow, i < detailItems.length - 1 && s.itemBorder]}>
                   <View style={s.itemDot} />
                   <View style={{ flex: 1 }}>
-                    <Text style={s.itemName}>{item.product_name}</Text>
+                    <Text style={s.itemName}>{item.store_products?.name ?? '—'}</Text>
                     <Text style={s.itemUnit}>৳{item.unit_price} × {item.quantity}</Text>
                   </View>
-                  <Text style={s.itemTotal}>৳{item.total_price.toLocaleString()}</Text>
+                  <Text style={s.itemTotal}>৳{item.line_total.toLocaleString()}</Text>
                 </View>
               ))}
             </ScrollView>
@@ -221,7 +224,7 @@ export default function Invoices() {
           {/* Total */}
           <View style={s.totalRow}>
             <Text style={s.totalLabel}>Total</Text>
-            <Text style={s.totalAmount}>৳{(detailInv?.amount ?? 0).toLocaleString()}</Text>
+            <Text style={s.totalAmount}>৳{(detailInv?.total_amount ?? 0).toLocaleString()}</Text>
           </View>
         </View>
       </View>

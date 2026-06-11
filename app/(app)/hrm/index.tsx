@@ -11,14 +11,38 @@ import { colors } from '@/lib/theme'
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
 
-interface Week { id: string; label: string | null; start_date: string; end_date: string; is_locked: boolean }
-interface KpiSubject { id: string; name: string }
-interface KpiSubmission { id: string; subject_id: string; submitted_at: string }
+// Derived week shape from new schema
+interface Week {
+  id: string
+  week_key: string
+  friday_date: string
+  status: string
+  // derived
+  label: string
+  start_date: string
+  end_date: string
+  is_locked: boolean
+}
+
+function deriveWeek(raw: any): Week {
+  const friday = new Date(raw.friday_date)
+  const monday = new Date(friday)
+  monday.setDate(friday.getDate() - 4)
+  return {
+    id: raw.id,
+    week_key: raw.week_key,
+    friday_date: raw.friday_date,
+    status: raw.status,
+    label: raw.week_key,
+    start_date: monday.toISOString().slice(0, 10),
+    end_date: raw.friday_date,
+    is_locked: raw.status !== 'OPEN',
+  }
+}
 
 const adminSections = [
   { label: 'Employees',       icon: 'people-circle-outline', color: colors.blue,   route: '/(app)/hrm/employees' },
   { label: 'Week Management', icon: 'calendar-outline',      color: colors.amber,  route: '/(app)/hrm/weeks'     },
-  { label: 'KPI Subjects',    icon: 'list-outline',          color: colors.purple, route: null                   },
 ] as const
 
 export default function HrmDashboard() {
@@ -35,9 +59,6 @@ export default function HrmDashboard() {
   const [refreshing, setRefreshing] = useState(false)
   const [fullName, setFullName] = useState<string | null>(null)
   const [week, setWeek] = useState<Week | null>(null)
-  const [totalAssigned, setTotalAssigned] = useState(0)
-  const [submitted, setSubmitted] = useState(0)
-  const [pending, setPending] = useState(0)
   const [taskCount, setTaskCount] = useState(0)
   const [totalEmployees, setTotalEmployees] = useState(0)
   const [totalWeeks, setTotalWeeks] = useState(0)
@@ -45,25 +66,19 @@ export default function HrmDashboard() {
   const fetchData = async () => {
     if (!user) return
 
-    const [userRes, weekRes] = await Promise.all([
-      supabase.from('hrm_users').select('full_name').eq('id', user.id).maybeSingle(),
-      supabase.from('hrm_weeks').select('id,label,start_date,end_date,is_locked').order('start_date', { ascending: false }).limit(1).maybeSingle(),
+    // Get profile name (hrm_users may not have full_name in new schema)
+    const [profileRes, weekRes] = await Promise.all([
+      supabase.from('profiles').select('full_name').eq('id', user.id).maybeSingle(),
+      supabase.from('hrm_weeks').select('id,week_key,friday_date,status').order('friday_date', { ascending: false }).limit(1).maybeSingle(),
     ])
-    setFullName(userRes.data?.full_name ?? null)
-    setWeek(weekRes.data)
+    setFullName(profileRes.data?.full_name ?? null)
+    setWeek(weekRes.data ? deriveWeek(weekRes.data) : null)
 
-    const [subjectsRes, submissionsRes, taskRes] = await Promise.all([
-      supabase.from('hrm_kpi_subjects').select('id,name'),
-      supabase.from('hrm_kpi_submissions').select('id,subject_id,submitted_at').eq('user_id', user.id),
-      supabase.from('hrm_task_reports').select('id', { count: 'exact' }).eq('user_id', user.id),
-    ])
-
-    const subjects = (subjectsRes.data as KpiSubject[]) ?? []
-    const subs = (submissionsRes.data as KpiSubmission[]) ?? []
-    setTotalAssigned(subjects.length)
-    setSubmitted(subs.length)
-    setPending(Math.max(subjects.length - subs.length, 0))
-    setTaskCount(taskRes.count ?? 0)
+    const { count: taskCnt } = await supabase
+      .from('hrm_task_reports')
+      .select('id', { count: 'exact' })
+      .eq('author_user_id', user.id)
+    setTaskCount(taskCnt ?? 0)
 
     if (isAdmin) {
       const [empRes, weeksRes] = await Promise.all([
@@ -89,9 +104,9 @@ export default function HrmDashboard() {
         {/* Header */}
         <View style={s.titleRow}>
           <View>
-            <Text style={s.pageTitle}>{isAdmin ? 'HRM Dashboard' : 'My KPI Dashboard'}</Text>
+            <Text style={s.pageTitle}>{isAdmin ? 'HRM Dashboard' : 'My HRM Dashboard'}</Text>
             <Text style={s.pageSub}>
-              {fullName ? `Welcome, ${fullName}` : 'Weekly KPI tracking'}
+              {fullName ? `Welcome, ${fullName}` : 'Weekly task & reporting'}
             </Text>
           </View>
           <Button title="Sign Out" onPress={signOut} variant="ghost" />
@@ -127,7 +142,7 @@ export default function HrmDashboard() {
           {week ? (
             <>
               <Text style={s.weekDate}>
-                {new Date(week.start_date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                {week.label} — {new Date(week.start_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric' })} to {new Date(week.end_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
               </Text>
               <View style={[s.weekBadge, { backgroundColor: week.is_locked ? colors.red + '22' : colors.green + '22' }]}>
                 <Ionicons name={week.is_locked ? 'lock-closed-outline' : 'lock-open-outline'} size={13} color={week.is_locked ? colors.red : colors.green} />
@@ -141,39 +156,6 @@ export default function HrmDashboard() {
           )}
         </Card>
 
-        {/* KPI Stats */}
-        <View style={s.statsRow}>
-          <Card style={s.statCard}>
-            <View style={s.statIconRow}>
-              <Ionicons name="time-outline" size={20} color={colors.slate400} />
-            </View>
-            <Text style={s.statNum}>{totalAssigned}</Text>
-            <Text style={s.statLabel}>Assigned</Text>
-          </Card>
-          <Card style={s.statCard}>
-            <View style={s.statIconRow}>
-              <Ionicons name="checkmark-circle-outline" size={20} color={colors.green} />
-            </View>
-            <Text style={[s.statNum, { color: colors.green }]}>{submitted}</Text>
-            <Text style={s.statLabel}>Submitted</Text>
-          </Card>
-          <Card style={s.statCard}>
-            <View style={s.statIconRow}>
-              <Ionicons name="alert-circle-outline" size={20} color={colors.amber} />
-            </View>
-            <Text style={[s.statNum, { color: colors.amber }]}>{pending}</Text>
-            <Text style={s.statLabel}>Pending</Text>
-          </Card>
-        </View>
-
-        {/* Pending action button */}
-        {pending > 0 && !week?.is_locked && (
-          <TouchableOpacity style={s.pendingBtn} onPress={() => router.push('/(app)/hrm/kpi' as any)}>
-            <Ionicons name="bar-chart-outline" size={18} color={colors.navy} />
-            <Text style={s.pendingBtnText}>Mark {pending} Pending KPI Subject{pending > 1 ? 's' : ''}</Text>
-          </TouchableOpacity>
-        )}
-
         {/* Admin panel */}
         {isAdmin && (
           <>
@@ -183,7 +165,7 @@ export default function HrmDashboard() {
                 <TouchableOpacity
                   key={sec.label}
                   style={s.adminCard}
-                  onPress={() => sec.route ? router.push(sec.route as any) : Alert.alert('Coming Soon', 'KPI Subjects are managed from the web admin panel.')}
+                  onPress={() => router.push(sec.route as any)}
                   activeOpacity={0.75}
                 >
                   <View style={[s.adminIcon, { backgroundColor: sec.color + '22', borderColor: sec.color + '40' }]}>
@@ -208,7 +190,7 @@ export default function HrmDashboard() {
             <Ionicons name="bar-chart-outline" size={18} color={colors.gold} />
             <Text style={s.taskTitle}>Weekly Report</Text>
           </View>
-          <Text style={s.taskSub}>Submit your weekly performance report including achievements and KPIs.</Text>
+          <Text style={s.taskSub}>Submit your weekly performance report including achievements.</Text>
           <Button title="Submit Weekly Report" onPress={() => router.push('/(app)/hrm/weekly-report' as any)} variant="secondary" />
         </Card>
 
@@ -254,13 +236,6 @@ const s = StyleSheet.create({
   weekBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
   weekBadgeText: { fontSize: 12, fontWeight: '700' },
   noWeek: { color: colors.slate400, fontSize: 13 },
-  statsRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
-  statCard: { flex: 1, paddingVertical: 14, alignItems: 'center' },
-  statIconRow: { marginBottom: 6 },
-  statNum: { color: colors.white, fontSize: 26, fontWeight: 'bold', textAlign: 'center' },
-  statLabel: { color: colors.slate400, fontSize: 11, fontWeight: '600', textAlign: 'center', marginTop: 2 },
-  pendingBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.gold, borderRadius: 12, paddingVertical: 14, marginBottom: 16 },
-  pendingBtnText: { color: colors.navy, fontWeight: '700', fontSize: 15 },
   sectionLabel: { color: colors.gold, fontSize: 11, fontWeight: '700', letterSpacing: 1.2, marginBottom: 10 },
   adminGrid: { flexDirection: 'row', gap: 10, marginBottom: 16 },
   adminCard: { flex: 1, backgroundColor: colors.navyLight, borderRadius: 14, padding: 16, alignItems: 'center', gap: 6, borderWidth: 1, borderColor: colors.slate700 + '60' },
@@ -272,4 +247,6 @@ const s = StyleSheet.create({
   taskTitle: { color: colors.white, fontWeight: '700', fontSize: 15 },
   taskSub: { color: colors.slate400, fontSize: 12, lineHeight: 18, marginBottom: 12 },
   reportCountCard: { alignItems: 'center', paddingVertical: 20, gap: 6 },
+  statNum: { color: colors.white, fontSize: 26, fontWeight: 'bold', textAlign: 'center' },
+  statLabel: { color: colors.slate400, fontSize: 11, fontWeight: '600', textAlign: 'center', marginTop: 2 },
 })

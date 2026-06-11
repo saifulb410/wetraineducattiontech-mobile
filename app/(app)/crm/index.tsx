@@ -15,10 +15,14 @@ import { colors } from '@/lib/theme'
 interface Lead { id: string; status: string; name: string | null; phone: string | null; created_at: string }
 
 const STATUS_COLORS: Record<string, string> = {
-  new: colors.slate400, contacted: colors.blue, interested: colors.amber,
-  no_response: colors.red, sold: colors.green, qualified: colors.purple,
-  converted: colors.green, lost: colors.red,
+  NEW: colors.slate400, CONTACTED: colors.blue, INTERESTED: colors.amber,
+  NO_RESPONSE: colors.red, SOLD: colors.green, QUALIFIED: colors.purple,
+  CONVERTED: colors.green, LOST: colors.red,
 }
+
+// Display-friendly label for uppercase status values
+const statusLabel = (s: string) =>
+  s ? s.charAt(0) + s.slice(1).toLowerCase().replace('_', ' ') : s
 
 const adminSections = [
   { label: 'Users',         icon: 'people-circle-outline', color: colors.blue,   route: '/(app)/crm/users'         },
@@ -42,16 +46,17 @@ export default function CrmDashboard() {
 
   const fetchData = async () => {
     let leadsQuery = supabase.from('crm_leads').select('id,status,name,phone,created_at').order('created_at', { ascending: false })
-    if (!isAdmin && user) leadsQuery = leadsQuery.eq('assigned_to', user.id)
+    // non-admin: filter by owner_id
+    if (!isAdmin && user) leadsQuery = leadsQuery.eq('owner_id', user.id)
 
     const { data: leadsData } = await leadsQuery
     const leads = (leadsData as Lead[]) ?? []
 
     setTotalLeads(leads.length)
-    setSoldDeals(leads.filter(l => l.status === 'sold' || l.status === 'converted').length)
-    setActiveLeads(leads.filter(l => !['lost', 'sold', 'converted'].includes(l.status)).length)
+    setSoldDeals(leads.filter(l => l.status === 'SOLD' || l.status === 'CONVERTED').length)
+    setActiveLeads(leads.filter(l => !['LOST', 'SOLD', 'CONVERTED'].includes(l.status)).length)
     const total = leads.length
-    const sold = leads.filter(l => l.status === 'sold' || l.status === 'converted').length
+    const sold = leads.filter(l => l.status === 'SOLD' || l.status === 'CONVERTED').length
     setConversionRate(total > 0 ? Math.round((sold / total) * 100) : 0)
     setRecentLeads(leads.slice(0, 5))
 
@@ -60,7 +65,7 @@ export default function CrmDashboard() {
     setStatusBreakdown(Object.entries(statusMap).sort((a, b) => b[1] - a[1]).map(([status, count]) => ({ status, count })))
 
     if (isAdmin) {
-      const { count } = await supabase.from('crm_lead_requests').select('id', { count: 'exact' }).eq('status', 'pending')
+      const { count } = await supabase.from('crm_lead_requests').select('id', { count: 'exact' }).eq('status', 'PENDING')
       setPendingRequests(count ?? 0)
     }
 
@@ -148,7 +153,7 @@ export default function CrmDashboard() {
                   <Text style={s.leadName}>{l.name ?? 'Unknown'}</Text>
                 </View>
                 <View style={[s.statusBadge, { backgroundColor: (STATUS_COLORS[l.status] ?? colors.slate400) + '22' }]}>
-                  <Text style={[s.statusText, { color: STATUS_COLORS[l.status] ?? colors.slate400 }]}>{l.status}</Text>
+                  <Text style={[s.statusText, { color: STATUS_COLORS[l.status] ?? colors.slate400 }]}>{statusLabel(l.status)}</Text>
                 </View>
               </TouchableOpacity>
             ))}
@@ -161,7 +166,7 @@ export default function CrmDashboard() {
             {statusBreakdown.map(({ status, count }) => (
               <View key={status} style={s.breakRow}>
                 <View style={[s.dot, { backgroundColor: STATUS_COLORS[status] ?? colors.slate400 }]} />
-                <Text style={s.breakLabel}>{status}</Text>
+                <Text style={s.breakLabel}>{statusLabel(status)}</Text>
                 <View style={s.barWrap}>
                   <View style={[s.bar, { width: `${Math.min((count / totalLeads) * 100, 100)}%` as any, backgroundColor: STATUS_COLORS[status] ?? colors.slate400 }]} />
                 </View>

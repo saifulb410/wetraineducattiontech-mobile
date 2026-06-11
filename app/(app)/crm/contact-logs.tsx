@@ -14,7 +14,7 @@ import { colors } from '@/lib/theme'
 interface Log {
   id: string
   notes: string | null
-  type: string | null
+  contact_type: string | null
   created_at: string
   crm_leads?: { name: string | null; phone: string | null } | null
   crm_users?: { full_name: string | null } | null
@@ -22,14 +22,20 @@ interface Log {
 
 interface Lead { id: string; name: string | null; phone: string | null }
 
-const LOG_TYPES = ['call', 'email', 'whatsapp', 'meeting', 'sms', 'other']
+// New schema uses contact_type (default 'CALL') instead of type
+const LOG_TYPES = ['CALL', 'EMAIL', 'WHATSAPP', 'MEETING', 'SMS', 'OTHER']
 const TYPE_ICONS: Record<string, any> = {
-  call: 'call-outline', email: 'mail-outline', whatsapp: 'logo-whatsapp',
-  meeting: 'people-outline', sms: 'chatbubble-outline', other: 'ellipsis-horizontal-outline',
+  CALL: 'call-outline', EMAIL: 'mail-outline', WHATSAPP: 'logo-whatsapp',
+  MEETING: 'people-outline', SMS: 'chatbubble-outline', OTHER: 'ellipsis-horizontal-outline',
 }
 const TYPE_COLORS: Record<string, string> = {
-  call: colors.green, email: colors.blue, whatsapp: '#25D366',
-  meeting: colors.purple, sms: colors.amber, other: colors.slate400,
+  CALL: colors.green, EMAIL: colors.blue, WHATSAPP: '#25D366',
+  MEETING: colors.purple, SMS: colors.amber, OTHER: colors.slate400,
+}
+
+const typeLabel = (t: string | null) => {
+  if (!t) return 'Other'
+  return t.charAt(0) + t.slice(1).toLowerCase()
 }
 
 export default function ContactLogs() {
@@ -43,14 +49,14 @@ export default function ContactLogs() {
   const [refreshing, setRefreshing] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState({ lead_id: '', type: 'call', notes: '' })
+  const [form, setForm] = useState({ lead_id: '', contact_type: 'CALL', notes: '' })
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
   const [showLeadPicker, setShowLeadPicker] = useState(false)
 
   const fetchData = async () => {
     let query = supabase
       .from('crm_contact_logs')
-      .select('id,notes,type,created_at,crm_leads(name,phone),crm_users(full_name)')
+      .select('id,notes,contact_type,created_at,crm_leads(name,phone),crm_users(full_name)')
       .order('created_at', { ascending: false })
       .limit(100)
 
@@ -61,9 +67,9 @@ export default function ContactLogs() {
     const { data } = await query
     setLogs((data as Log[]) ?? [])
 
-    // Fetch leads for picker
+    // Fetch leads for picker — non-admin: filter by owner_id
     let leadsQuery = supabase.from('crm_leads').select('id,name,phone').order('created_at', { ascending: false }).limit(100)
-    if (!isAdmin && user) leadsQuery = leadsQuery.eq('assigned_to', user.id)
+    if (!isAdmin && user) leadsQuery = leadsQuery.eq('owner_id', user.id)
     const { data: leadsData } = await leadsQuery
     setLeads((leadsData as Lead[]) ?? [])
 
@@ -89,7 +95,7 @@ export default function ContactLogs() {
     const { error } = await supabase.from('crm_contact_logs').insert({
       lead_id: form.lead_id,
       user_id: user?.id,
-      type: form.type,
+      contact_type: form.contact_type,
       notes: form.notes.trim(),
     })
     setSaving(false)
@@ -97,7 +103,7 @@ export default function ContactLogs() {
       Alert.alert('Error', error.message)
     } else {
       setShowModal(false)
-      setForm({ lead_id: '', type: 'call', notes: '' })
+      setForm({ lead_id: '', contact_type: 'CALL', notes: '' })
       setSelectedLead(null)
       fetchData()
     }
@@ -139,8 +145,9 @@ export default function ContactLogs() {
             </Card>
           ) : (
             filtered.map(log => {
-              const typeColor = TYPE_COLORS[log.type ?? ''] ?? colors.slate400
-              const typeIcon = TYPE_ICONS[log.type ?? ''] ?? 'ellipsis-horizontal-outline'
+              const ct = (log.contact_type ?? 'OTHER').toUpperCase()
+              const typeColor = TYPE_COLORS[ct] ?? colors.slate400
+              const typeIcon = TYPE_ICONS[ct] ?? 'ellipsis-horizontal-outline'
               return (
                 <Card key={log.id} style={s.card}>
                   <View style={s.cardTop}>
@@ -158,7 +165,7 @@ export default function ContactLogs() {
                   {log.notes ? <Text style={s.logNotes}>{log.notes}</Text> : null}
                   <View style={s.cardBottom}>
                     <View style={[s.typeBadge, { backgroundColor: typeColor + '18' }]}>
-                      <Text style={[s.typeBadgeText, { color: typeColor }]}>{log.type ?? 'other'}</Text>
+                      <Text style={[s.typeBadgeText, { color: typeColor }]}>{typeLabel(log.contact_type)}</Text>
                     </View>
                     {isAdmin && log.crm_users?.full_name ? (
                       <Text style={s.byText}>by {log.crm_users.full_name}</Text>
@@ -208,17 +215,17 @@ export default function ContactLogs() {
               </ScrollView>
             )}
 
-            {/* Type */}
+            {/* Contact Type */}
             <Text style={s.label}>Type *</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.typeRow}>
               {LOG_TYPES.map(t => (
                 <TouchableOpacity
                   key={t}
-                  style={[s.typeChip, form.type === t && { backgroundColor: (TYPE_COLORS[t] ?? colors.gold), borderColor: TYPE_COLORS[t] ?? colors.gold }]}
-                  onPress={() => setForm({ ...form, type: t })}
+                  style={[s.typeChip, form.contact_type === t && { backgroundColor: (TYPE_COLORS[t] ?? colors.gold), borderColor: TYPE_COLORS[t] ?? colors.gold }]}
+                  onPress={() => setForm({ ...form, contact_type: t })}
                 >
-                  <Ionicons name={TYPE_ICONS[t]} size={13} color={form.type === t ? colors.white : colors.slate400} />
-                  <Text style={[s.typeChipText, form.type === t && { color: colors.white }]}>{t}</Text>
+                  <Ionicons name={TYPE_ICONS[t]} size={13} color={form.contact_type === t ? colors.white : colors.slate400} />
+                  <Text style={[s.typeChipText, form.contact_type === t && { color: colors.white }]}>{typeLabel(t)}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>

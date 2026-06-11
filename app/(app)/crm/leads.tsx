@@ -20,28 +20,28 @@ interface Lead {
   source: string | null
   notes: string | null
   created_at: string
-  assigned_to: string | null
-  crm_users?: { full_name: string | null } | null
+  owner_id: string | null
+  profiles?: { full_name: string | null } | null
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  new: colors.slate400,
-  contacted: colors.blue,
-  interested: colors.amber,
-  no_response: colors.red,
-  sold: colors.green,
-  qualified: colors.purple,
-  converted: colors.green,
-  lost: colors.red,
+  NEW: colors.slate400,
+  CONTACTED: colors.blue,
+  INTERESTED: colors.amber,
+  NO_RESPONSE: colors.red,
+  SOLD: colors.green,
+  QUALIFIED: colors.purple,
+  CONVERTED: colors.green,
+  LOST: colors.red,
 }
 
 const STATUS_LABELS: Record<string, string> = {
-  new: 'New', contacted: 'Contacted', interested: 'Interested',
-  no_response: 'No Response', sold: 'Sold', qualified: 'Qualified',
-  converted: 'Converted', lost: 'Lost',
+  NEW: 'New', CONTACTED: 'Contacted', INTERESTED: 'Interested',
+  NO_RESPONSE: 'No Response', SOLD: 'Sold', QUALIFIED: 'Qualified',
+  CONVERTED: 'Converted', LOST: 'Lost',
 }
 
-const ALL_FILTERS = ['All', 'new', 'contacted', 'interested', 'no_response', 'sold', 'qualified', 'lost']
+const ALL_FILTERS = ['All', 'NEW', 'CONTACTED', 'INTERESTED', 'NO_RESPONSE', 'SOLD', 'QUALIFIED', 'LOST']
 
 export default function Leads() {
   const router = useRouter()
@@ -58,17 +58,31 @@ export default function Leads() {
   const fetchLeads = async () => {
     let query = supabase
       .from('crm_leads')
-      .select('id,name,phone,email,status,source,notes,created_at,assigned_to,crm_users!assigned_to(full_name)')
+      .select('id,name,phone,email,status,source,notes,created_at,owner_id')
       .order('created_at', { ascending: false })
 
     if (!isAdmin && user) {
-      query = query.eq('assigned_to', user.id)
+      query = query.eq('owner_id', user.id)
     }
 
     const { data } = await query
     const rows = (data as Lead[]) ?? []
-    setAll(rows)
-    setFiltered(rows)
+
+    // Fetch owner names via profiles for admin view
+    if (isAdmin && rows.length > 0) {
+      const ownerIds = [...new Set(rows.map(r => r.owner_id).filter(Boolean))] as string[]
+      if (ownerIds.length > 0) {
+        const { data: profileData } = await supabase.from('profiles').select('id,full_name').in('id', ownerIds)
+        const profileMap: Record<string, string | null> = {}
+        ;(profileData ?? []).forEach((p: any) => { profileMap[p.id] = p.full_name })
+        setAll(rows.map(r => ({ ...r, profiles: r.owner_id ? { full_name: profileMap[r.owner_id] ?? null } : null })))
+      } else {
+        setAll(rows)
+      }
+    } else {
+      setAll(rows)
+    }
+
     setLoading(false)
     setRefreshing(false)
   }
@@ -156,10 +170,10 @@ export default function Leads() {
                       <Text style={s.sourceTxt}>{lead.source}</Text>
                     </View>
                   ) : null}
-                  {isAdmin && lead.crm_users?.full_name ? (
+                  {isAdmin && lead.profiles?.full_name ? (
                     <View style={s.ownerBadge}>
                       <Ionicons name="person-outline" size={10} color={colors.gold} />
-                      <Text style={s.ownerTxt}>{lead.crm_users.full_name}</Text>
+                      <Text style={s.ownerTxt}>{lead.profiles.full_name}</Text>
                     </View>
                   ) : null}
                   <Text style={s.date}>{new Date(lead.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}</Text>

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   View, Text, ScrollView, RefreshControl,
-  StyleSheet, TouchableOpacity, Alert,
+  StyleSheet, TouchableOpacity,
 } from 'react-native'
 import { useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
@@ -34,11 +34,30 @@ export default function CrmUsers() {
   const [refreshing, setRefreshing] = useState(false)
 
   const fetchUsers = async () => {
-    const { data } = await supabase
+    const { data: crmData } = await supabase
       .from('crm_users')
-      .select('id,full_name,email,crm_role,created_at')
+      .select('id,crm_role,created_at')
       .order('created_at', { ascending: false })
-    setUsers((data as CrmUser[]) ?? [])
+
+    const rows = crmData ?? []
+    if (rows.length > 0) {
+      const ids = (rows as any[]).map(r => r.id)
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('id,full_name,email')
+        .in('id', ids)
+      const profileMap: Record<string, { full_name: string | null; email: string | null }> = {}
+      ;(profileData ?? []).forEach((p: any) => { profileMap[p.id] = { full_name: p.full_name, email: p.email } })
+      setUsers((rows as any[]).map(r => ({
+        id: r.id,
+        crm_role: r.crm_role,
+        created_at: r.created_at,
+        full_name: profileMap[r.id]?.full_name ?? null,
+        email: profileMap[r.id]?.email ?? null,
+      })))
+    } else {
+      setUsers([])
+    }
     setLoading(false)
     setRefreshing(false)
   }

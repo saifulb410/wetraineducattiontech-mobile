@@ -8,7 +8,13 @@ import { Card } from '@/components/ui/Card'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { colors } from '@/lib/theme'
 
-interface HrmUser { id: string; full_name: string | null; email: string | null; hrm_role: string; created_at: string }
+interface HrmUser {
+  id: string
+  full_name: string | null
+  email: string | null
+  hrm_role: string
+  created_at: string
+}
 
 const ROLE_COLORS: Record<string, string> = {
   SUPER_ADMIN: colors.purple,
@@ -26,11 +32,30 @@ export default function HrmEmployees() {
   const [refreshing, setRefreshing] = useState(false)
 
   const fetchUsers = async () => {
-    const { data } = await supabase
+    const { data: hrmData } = await supabase
       .from('hrm_users')
-      .select('id,full_name,email,hrm_role,created_at')
+      .select('id,hrm_role,created_at')
       .order('created_at', { ascending: false })
-    setUsers((data as HrmUser[]) ?? [])
+
+    const rows = hrmData ?? []
+    if (rows.length > 0) {
+      const ids = rows.map((r: any) => r.id)
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('id,full_name,email')
+        .in('id', ids)
+      const profileMap: Record<string, { full_name: string | null; email: string | null }> = {}
+      ;(profileData ?? []).forEach((p: any) => { profileMap[p.id] = { full_name: p.full_name, email: p.email } })
+      setUsers(rows.map((r: any) => ({
+        id: r.id,
+        hrm_role: r.hrm_role,
+        created_at: r.created_at,
+        full_name: profileMap[r.id]?.full_name ?? null,
+        email: profileMap[r.id]?.email ?? null,
+      })))
+    } else {
+      setUsers([])
+    }
     setLoading(false)
     setRefreshing(false)
   }

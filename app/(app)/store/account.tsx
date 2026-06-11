@@ -10,42 +10,52 @@ import { Card } from '@/components/ui/Card'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { colors } from '@/lib/theme'
 
-interface LedgerEntry {
+interface AccountEntry {
   id: string
-  type: string
+  category: string
   amount: number
-  notes: string | null
+  reason: string | null
   created_at: string
 }
 
-const TYPE_CONFIG: Record<string, { color: string; icon: string; sign: string }> = {
-  credit:   { color: colors.green, icon: 'arrow-down-circle-outline', sign: '+' },
-  deposit:  { color: colors.green, icon: 'wallet-outline',            sign: '+' },
-  refund:   { color: colors.green, icon: 'refresh-circle-outline',    sign: '+' },
-  purchase: { color: colors.red,   icon: 'cart-outline',              sign: '-' },
-  penalty:  { color: colors.red,   icon: 'alert-circle-outline',      sign: '-' },
-  debit:    { color: colors.red,   icon: 'arrow-up-circle-outline',   sign: '-' },
+const CATEGORY_CONFIG: Record<string, { color: string; icon: string }> = {
+  DEPOSIT:    { color: colors.green, icon: 'arrow-down-circle-outline' },
+  REFUND:     { color: colors.green, icon: 'refresh-circle-outline'    },
+  PURCHASE:   { color: colors.red,   icon: 'cart-outline'              },
+  PENALTY:    { color: colors.red,   icon: 'alert-circle-outline'      },
+  WITHDRAWAL: { color: colors.red,   icon: 'arrow-up-circle-outline'   },
+  ADJUSTMENT: { color: colors.amber, icon: 'swap-horizontal-outline'   },
 }
 
-const FILTERS = ['All', 'credit', 'deposit', 'purchase', 'penalty', 'refund']
+const FILTERS = ['All', 'DEPOSIT', 'PURCHASE', 'WITHDRAWAL', 'PENALTY', 'REFUND', 'ADJUSTMENT']
 
 export default function Account() {
   const { user } = useAuthContext()
 
   const [balance, setBalance] = useState(0)
-  const [entries, setEntries] = useState<LedgerEntry[]>([])
+  const [entries, setEntries] = useState<AccountEntry[]>([])
   const [filter, setFilter] = useState('All')
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
   const fetchData = async () => {
     if (!user) return
-    const [acctRes, ledgerRes] = await Promise.all([
-      supabase.from('store_accounts').select('balance').eq('user_id', user.id).maybeSingle(),
-      supabase.from('store_ledger').select('id,type,amount,notes,created_at').eq('user_id', user.id).order('created_at', { ascending: false }).limit(100),
-    ])
-    setBalance(acctRes.data?.balance ?? 0)
-    setEntries((ledgerRes.data as LedgerEntry[]) ?? [])
+    const { data } = await supabase
+      .from('store_account_entries')
+      .select('id,category,amount,reason,created_at')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(100)
+
+    const rows = (data as AccountEntry[]) ?? []
+    setEntries(rows)
+    // Compute balance from all entries (not just the 100 shown)
+    const { data: allData } = await supabase
+      .from('store_account_entries')
+      .select('amount')
+      .eq('user_id', user.id)
+    setBalance((allData ?? []).reduce((s: number, e: any) => s + (e.amount ?? 0), 0))
+
     setLoading(false)
     setRefreshing(false)
   }
@@ -53,10 +63,15 @@ export default function Account() {
   useEffect(() => { fetchData() }, [user])
   const onRefresh = () => { setRefreshing(true); fetchData() }
 
-  const filtered = filter === 'All' ? entries : entries.filter(e => e.type === filter)
-  const totalIn  = filtered.filter(e => ['credit','deposit','refund'].includes(e.type)).reduce((s,e) => s + (e.amount ?? 0), 0)
-  const totalOut = filtered.filter(e => ['purchase','penalty','debit'].includes(e.type)).reduce((s,e) => s + (e.amount ?? 0), 0)
+  const filtered = filter === 'All' ? entries : entries.filter(e => e.category === filter)
+  const totalIn  = filtered.filter(e => e.amount > 0).reduce((s, e) => s + e.amount, 0)
+  const totalOut = filtered.filter(e => e.amount < 0).reduce((s, e) => s + Math.abs(e.amount), 0)
   const balanceColor = balance >= 0 ? colors.green : colors.red
+
+  const filterLabel = (f: string) => {
+    if (f === 'All') return 'All'
+    return f.charAt(0) + f.slice(1).toLowerCase()
+  }
 
   if (loading) return <LoadingScreen />
 
@@ -102,7 +117,7 @@ export default function Account() {
           {FILTERS.map(f => (
             <TouchableOpacity key={f} style={[s.chip, filter === f && s.chipActive]} onPress={() => setFilter(f)}>
               <Text style={[s.chipText, filter === f && s.chipTextActive]}>
-                {f === 'All' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
+                {filterLabel(f)}
               </Text>
             </TouchableOpacity>
           ))}
@@ -112,11 +127,12 @@ export default function Account() {
         {filtered.length === 0 ? (
           <Card style={s.emptyCard}>
             <Ionicons name="book-outline" size={40} color={colors.slate600} />
-            <Text style={s.emptyText}>No {filter === 'All' ? '' : filter} entries found</Text>
+            <Text style={s.emptyText}>No {filter === 'All' ? '' : filterLabel(filter)} entries found</Text>
           </Card>
         ) : (
           filtered.map(entry => {
-            const cfg = TYPE_CONFIG[entry.type] ?? { color: colors.slate400, icon: 'ellipse-outline', sign: '' }
+            const cfg = CATEGORY_CONFIG[entry.category] ?? { color: colors.slate400, icon: 'ellipse-outline' }
+            const isPositive = entry.amount >= 0
             return (
               <Card key={entry.id} style={s.entryCard}>
                 <View style={s.entryRow}>
@@ -124,14 +140,14 @@ export default function Account() {
                     <Ionicons name={cfg.icon as any} size={20} color={cfg.color} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={s.entryType}>{entry.type.charAt(0).toUpperCase() + entry.type.slice(1)}</Text>
-                    {entry.notes ? <Text style={s.entryNotes} numberOfLines={1}>{entry.notes}</Text> : null}
+                    <Text style={s.entryType}>{filterLabel(entry.category)}</Text>
+                    {entry.reason ? <Text style={s.entryNotes} numberOfLines={1}>{entry.reason}</Text> : null}
                     <Text style={s.entryDate}>
                       {new Date(entry.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' } as any)}
                     </Text>
                   </View>
                   <Text style={[s.entryAmount, { color: cfg.color }]}>
-                    {cfg.sign}৳{(entry.amount ?? 0).toLocaleString()}
+                    {isPositive ? '+' : ''}৳{Math.abs(entry.amount ?? 0).toLocaleString()}
                   </Text>
                 </View>
               </Card>

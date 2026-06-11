@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/Button'
 import { colors } from '@/lib/theme'
 
 const SOURCES = ['ADMIN', 'website', 'referral', 'social_media', 'phone', 'walk_in', 'other']
-const STATUSES = ['new', 'contacted', 'interested', 'no_response', 'sold', 'qualified']
+const STATUSES = ['NEW', 'CONTACTED', 'INTERESTED', 'NO_RESPONSE', 'SOLD', 'QUALIFIED']
 
 interface Marketer { id: string; full_name: string | null; email: string | null }
 
@@ -28,40 +28,54 @@ export default function AddLead() {
 
   const [form, setForm] = useState({
     name: '', phone: '', email: '',
-    source: 'ADMIN', status: 'new', notes: '',
+    source: 'ADMIN', status: 'NEW', notes: '',
   })
 
   useEffect(() => {
     if (isAdmin) {
-      supabase.from('crm_users').select('id,full_name,email').neq('crm_role', 'ADMIN').then(({ data }) => {
-        setMarketers((data as Marketer[]) ?? [])
+      // Fetch crm_users (non-admin), then join profiles for full_name/email
+      supabase.from('crm_users').select('id,crm_role').neq('crm_role', 'ADMIN').then(async ({ data }) => {
+        const rows = data ?? []
+        if (rows.length > 0) {
+          const ids = rows.map((r: any) => r.id)
+          const { data: profileData } = await supabase.from('profiles').select('id,full_name,email').in('id', ids)
+          const profileMap: Record<string, { full_name: string | null; email: string | null }> = {}
+          ;(profileData ?? []).forEach((p: any) => { profileMap[p.id] = { full_name: p.full_name, email: p.email } })
+          setMarketers(rows.map((r: any) => ({
+            id: r.id,
+            full_name: profileMap[r.id]?.full_name ?? null,
+            email: profileMap[r.id]?.email ?? null,
+          })))
+        }
       })
     }
   }, [isAdmin])
 
-  // MARKETER: submit lead request
+  // MARKETER: submit lead request using lead_payload jsonb
   const handleRequestLead = async () => {
     if (!form.name.trim()) { Alert.alert('Error', 'Lead name is required.'); return }
     if (!form.phone.trim()) { Alert.alert('Error', 'Phone is required.'); return }
     setSaving(true)
     const { error } = await supabase.from('crm_lead_requests').insert({
       requester_id: user?.id,
-      lead_name: form.name.trim(),
-      phone: form.phone.trim(),
-      source: form.source,
-      status: 'pending',
+      lead_payload: {
+        lead_name: form.name.trim(),
+        phone: form.phone.trim(),
+        source: form.source,
+      },
+      status: 'PENDING',
     })
     setSaving(false)
     if (error) {
       Alert.alert('Error', error.message)
     } else {
       Alert.alert('Submitted', 'Your lead request has been sent to admin for approval.', [
-        { text: 'OK', onPress: () => setForm({ name: '', phone: '', email: '', source: 'ADMIN', status: 'new', notes: '' }) },
+        { text: 'OK', onPress: () => setForm({ name: '', phone: '', email: '', source: 'ADMIN', status: 'NEW', notes: '' }) },
       ])
     }
   }
 
-  // ADMIN: add lead directly
+  // ADMIN: add lead directly using owner_id
   const handleAddLead = async () => {
     if (!form.name.trim()) { Alert.alert('Error', 'Name is required.'); return }
     setSaving(true)
@@ -72,18 +86,20 @@ export default function AddLead() {
       source: form.source,
       status: form.status,
       notes: form.notes.trim() || null,
-      assigned_to: selectedMarketer?.id ?? null,
+      owner_id: selectedMarketer?.id ?? null,
     })
     setSaving(false)
     if (error) {
       Alert.alert('Error', error.message)
     } else {
       Alert.alert('Lead Added', `Lead assigned to ${selectedMarketer?.full_name ?? 'unassigned'}.`, [
-        { text: 'Add Another', onPress: () => { setForm({ name: '', phone: '', email: '', source: 'ADMIN', status: 'new', notes: '' }); setSelectedMarketer(null) } },
+        { text: 'Add Another', onPress: () => { setForm({ name: '', phone: '', email: '', source: 'ADMIN', status: 'NEW', notes: '' }); setSelectedMarketer(null) } },
         { text: 'View Leads', onPress: () => router.replace('/(app)/crm/leads' as any) },
       ])
     }
   }
+
+  const statusLabel = (st: string) => st.charAt(0) + st.slice(1).toLowerCase().replace('_', ' ')
 
   return (
     <ScrollView style={s.scroll} keyboardShouldPersistTaps="handled">
@@ -131,7 +147,7 @@ export default function AddLead() {
             <View style={s.chipRow}>
               {STATUSES.map(st => (
                 <TouchableOpacity key={st} style={[s.chip, form.status === st && s.chipActive]} onPress={() => setForm({ ...form, status: st })}>
-                  <Text style={[s.chipText, form.status === st && s.chipTextActive]}>{st.replace('_', ' ')}</Text>
+                  <Text style={[s.chipText, form.status === st && s.chipTextActive]}>{statusLabel(st)}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -153,8 +169,8 @@ export default function AddLead() {
                 </TouchableOpacity>
                 {marketers.map(m => (
                   <TouchableOpacity key={m.id} style={s.pickerOption} onPress={() => { setSelectedMarketer(m); setShowMarketerPicker(false) }}>
-                    <Text style={s.pickerOptName}>{m.full_name}</Text>
-                    <Text style={s.pickerOptEmail}>{m.email}</Text>
+                    <Text style={s.pickerOptName}>{m.full_name ?? '—'}</Text>
+                    <Text style={s.pickerOptEmail}>{m.email ?? ''}</Text>
                   </TouchableOpacity>
                 ))}
               </View>

@@ -15,13 +15,13 @@ import { colors } from '@/lib/theme'
 interface StockProduct {
   id: string
   name: string
-  price: number
-  status: string
-  store_stocks: { on_hand: number } | null
+  unit_price: number
+  is_active: boolean
+  store_stock_movements: { quantity_delta: number }[]
 }
 
 export default function Stocks() {
-  const { roles } = useAuthContext()
+  const { user, roles } = useAuthContext()
   const isAdmin = roles?.storeRole === 'ADMIN'
 
   const [products, setProducts] = useState<StockProduct[]>([])
@@ -36,8 +36,8 @@ export default function Stocks() {
   const fetchProducts = async () => {
     const { data } = await supabase
       .from('store_products')
-      .select('id,name,price,status,store_stocks(on_hand)')
-      .eq('status', 'active')
+      .select('id,name,unit_price,is_active,store_stock_movements(quantity_delta)')
+      .eq('is_active', true)
       .order('name')
     setProducts((data as StockProduct[]) ?? [])
     setLoading(false)
@@ -47,6 +47,9 @@ export default function Stocks() {
   useEffect(() => { fetchProducts() }, [])
   const onRefresh = () => { setRefreshing(true); fetchProducts() }
 
+  const getOnHand = (p: StockProduct) =>
+    (p.store_stock_movements ?? []).reduce((s, m) => s + m.quantity_delta, 0)
+
   const openAdjust = (p: StockProduct) => {
     if (!isAdmin) return
     setSelected(p)
@@ -55,33 +58,47 @@ export default function Stocks() {
   }
 
   const handleAdjust = async () => {
-    if (!selected) return
+    if (!selected || !user) return
     const qty = parseInt(adjQty)
     if (isNaN(qty) || qty < 0) { Alert.alert('Validation', 'Enter a valid quantity.'); return }
 
-    const currentOnHand = (selected.store_stocks as any)?.on_hand ?? 0
-    let newOnHand = currentOnHand
-    if (adjType === 'add') newOnHand = currentOnHand + qty
-    else if (adjType === 'remove') newOnHand = Math.max(0, currentOnHand - qty)
-    else newOnHand = qty
+    const currentOnHand = getOnHand(selected)
+    let delta = 0
+    if (adjType === 'add') delta = qty
+    else if (adjType === 'remove') delta = -Math.min(qty, currentOnHand)
+    else delta = qty - currentOnHand  // 'set'
+
+    if (delta === 0) { setSelected(null); return }
 
     setSaving(true)
-    const { data: existing } = await supabase.from('store_stocks').select('id').eq('product_id', selected.id).maybeSingle()
-    if (existing) {
-      await supabase.from('store_stocks').update({ on_hand: newOnHand }).eq('product_id', selected.id)
-    } else {
-      await supabase.from('store_stocks').insert({ product_id: selected.id, on_hand: newOnHand })
+    try {
+      const { data: entry, error: entryErr } = await supabase
+        .from('store_stock_entries')
+        .insert({ product_id: selected.id, quantity: Math.abs(delta), entered_by: user.id, note: `Stock ${adjType}` })
+        .select().single()
+      if (entryErr) throw entryErr
+
+      const { error: movErr } = await supabase.from('store_stock_movements').insert({
+        product_id: selected.id,
+        stock_entry_id: entry.id,
+        movement_type: 'STOCK_IN',
+        quantity_delta: delta,
+        actor_user_id: user.id,
+      })
+      if (movErr) throw movErr
+    } catch (err: any) {
+      Alert.alert('Error', err?.message ?? 'Failed to adjust stock.')
+      setSaving(false)
+      return
     }
+
     setSaving(false)
     setSelected(null)
     fetchProducts()
   }
 
   const filtered = products.filter(p => p.name.toLowerCase().includes(search.toLowerCase()))
-  const lowStockCount = products.filter(p => {
-    const oh = (p.store_stocks as any)?.on_hand ?? 0
-    return oh <= 5
-  }).length
+  const lowStockCount = products.filter(p => getOnHand(p) <= 5).length
 
   if (loading) return <LoadingScreen />
 
@@ -115,7 +132,7 @@ export default function Stocks() {
             </View>
           ) : (
             filtered.map(p => {
-              const onHand = (p.store_stocks as any)?.on_hand ?? (p as any).store_stocks?.[0]?.on_hand ?? 0
+              const onHand = getOnHand(p)
               const isOut = onHand === 0
               const isLow = onHand > 0 && onHand <= 5
               const stockColor = isOut ? colors.red : isLow ? colors.amber : colors.green
@@ -127,7 +144,7 @@ export default function Stocks() {
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={s.name} numberOfLines={1}>{p.name}</Text>
-                      <Text style={s.priceText}>৳{p.price}</Text>
+                      <Text style={s.priceText}>৳{p.unit_price}</Text>
                     </View>
                     <View style={s.stockRight}>
                       <Text style={[s.stockNum, { color: stockColor }]}>{onHand}</Text>
@@ -162,7 +179,7 @@ export default function Stocks() {
                 <Text style={s.productName}>{selected.name}</Text>
                 <Text style={s.currentStock}>
                   Current: <Text style={{ color: colors.gold, fontWeight: '800' }}>
-                    {(selected.store_stocks as any)?.on_hand ?? 0} units
+                    {getOnHand(selected)} units
                   </Text>
                 </Text>
 

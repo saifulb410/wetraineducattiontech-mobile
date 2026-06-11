@@ -12,27 +12,30 @@ import { colors } from '@/lib/theme'
 
 const SCREEN_H = Dimensions.get('window').height
 
-const CATEGORIES = [
-  'Monthly Allocation',
-  'Employee Payment',
-  'Purchase',
-  'Refund',
-  'Reversal',
-  'Correction',
-  'Penalty',
-  'Bonus Or Reward',
-  'Other',
-]
+// Mapped display categories → DB enum values
+const CATEGORY_MAP: Record<string, string> = {
+  'Monthly Allocation': 'DEPOSIT',
+  'Employee Payment':   'DEPOSIT',
+  'Purchase':          'PURCHASE',
+  'Refund':            'REFUND',
+  'Reversal':          'ADJUSTMENT',
+  'Correction':        'ADJUSTMENT',
+  'Penalty':           'PENALTY',
+  'Bonus Or Reward':   'DEPOSIT',
+  'Other':             'ADJUSTMENT',
+}
 
-interface EmployeeAccount {
+const CATEGORIES = Object.keys(CATEGORY_MAP)
+
+interface EmployeeBalance {
   user_id: string
   balance: number
-  profiles: { full_name: string | null; email: string | null } | null
+  profile: { full_name: string | null; email: string | null } | null
 }
 
 interface StoreEmployee {
   id: string
-  profiles: { full_name: string | null; email: string | null } | null
+  profile: { full_name: string | null; email: string | null } | null
 }
 
 function todayStr() {
@@ -46,7 +49,7 @@ function currentMonthStr() {
 
 export default function AccountsAdmin() {
   const { user } = useAuthContext()
-  const [accounts, setAccounts] = useState<EmployeeAccount[]>([])
+  const [accounts, setAccounts] = useState<EmployeeBalance[]>([])
   const [employees, setEmployees] = useState<StoreEmployee[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -58,27 +61,45 @@ export default function AccountsAdmin() {
   const [amount, setAmount] = useState('')
   const [category, setCategory] = useState('Monthly Allocation')
   const [showCategoryPicker, setShowCategoryPicker] = useState(false)
-  const [effectiveDate, setEffectiveDate] = useState(todayStr())
-  const [effectiveMonth, setEffectiveMonth] = useState(currentMonthStr())
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
 
   const fetchAccounts = useCallback(async () => {
-    const [accountsRes, usersRes] = await Promise.all([
-      supabase.from('store_accounts').select('user_id,balance,profiles(full_name,email)').order('balance', { ascending: false }),
-      supabase.from('store_users').select('id'),
-    ])
-    const ids = (usersRes.data ?? []).map((u: any) => u.id)
+    // Get all store users
+    const { data: usersData } = await supabase.from('store_users').select('id')
+    const ids = (usersData ?? []).map((u: any) => u.id)
+
     let empList: StoreEmployee[] = []
+    let balanceList: EmployeeBalance[] = []
+
     if (ids.length > 0) {
-      const { data: profileData } = await supabase
-        .from('profiles').select('id,full_name,email').in('id', ids)
-      empList = (profileData ?? []).map((p: any) => ({
-        id: p.id,
-        profiles: { full_name: p.full_name, email: p.email },
+      const [profilesRes, entriesRes] = await Promise.all([
+        supabase.from('profiles').select('id,full_name,email').in('id', ids),
+        supabase.from('store_account_entries').select('user_id,amount').in('user_id', ids),
+      ])
+
+      const profileMap: Record<string, any> = {}
+      ;(profilesRes.data ?? []).forEach((p: any) => { profileMap[p.id] = p })
+
+      empList = ids.map((id: string) => ({
+        id,
+        profile: profileMap[id] ? { full_name: profileMap[id].full_name, email: profileMap[id].email } : null,
       }))
+
+      // Aggregate balance per user from entries
+      const balMap: Record<string, number> = {}
+      ;(entriesRes.data ?? []).forEach((e: any) => {
+        balMap[e.user_id] = (balMap[e.user_id] ?? 0) + (e.amount ?? 0)
+      })
+
+      balanceList = ids.map((id: string) => ({
+        user_id: id,
+        balance: balMap[id] ?? 0,
+        profile: profileMap[id] ? { full_name: profileMap[id].full_name, email: profileMap[id].email } : null,
+      })).sort((a, b) => b.balance - a.balance)
     }
-    setAccounts((accountsRes.data as EmployeeAccount[]) ?? [])
+
+    setAccounts(balanceList)
     setEmployees(empList)
     setLoading(false)
     setRefreshing(false)
@@ -92,8 +113,6 @@ export default function AccountsAdmin() {
     setEntryType('Deposit')
     setAmount('')
     setCategory('Monthly Allocation')
-    setEffectiveDate(todayStr())
-    setEffectiveMonth(currentMonthStr())
     setNotes('')
     setShowModal(true)
   }
@@ -112,26 +131,17 @@ export default function AccountsAdmin() {
     setSaving(true)
     try {
       const isDeposit = entryType === 'Deposit'
+      const dbCategory = CATEGORY_MAP[category] ?? 'ADJUSTMENT'
+
       for (const uid of selectedUserIds) {
-        const currentBalance = accounts.find(a => a.user_id === uid)?.balance ?? 0
-        const newBalance = isDeposit ? currentBalance + amt : currentBalance - amt
-
-        const { error: balErr } = await supabase
-          .from('store_accounts')
-          .upsert({ user_id: uid, balance: newBalance }, { onConflict: 'user_id' })
-        if (balErr) throw balErr
-
-        const { error: ledErr } = await supabase.from('store_ledger').insert({
+        const { error } = await supabase.from('store_account_entries').insert({
           user_id: uid,
-          type: isDeposit ? 'credit' : 'debit',
-          amount: amt,
-          notes: notes.trim() || null,
-          category,
-          effective_date: effectiveDate || null,
-          effective_month: effectiveMonth || null,
+          amount: isDeposit ? amt : -amt,
+          category: dbCategory,
+          reason: notes.trim() || category,
           created_by: user?.id ?? null,
         })
-        if (ledErr) throw ledErr
+        if (error) throw error
       }
 
       await fetchAccounts()
@@ -207,19 +217,18 @@ export default function AccountsAdmin() {
             </View>
           ) : (
             accounts.map(a => {
-              const profile = a.profiles as any
-              const name = profile?.full_name ?? profile?.email ?? a.user_id.slice(0, 8)
+              const name = a.profile?.full_name ?? a.profile?.email ?? a.user_id.slice(0, 8)
               const bal = a.balance ?? 0
               const balColor = bal >= 0 ? colors.green : colors.red
               return (
-                <Card key={a.user_id} style={s.card}>
+                <View key={a.user_id} style={s.card}>
                   <View style={s.cardRow}>
                     <View style={s.avatarWrap}>
                       <Text style={s.avatarText}>{(name as string).charAt(0).toUpperCase()}</Text>
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={s.empName} numberOfLines={1}>{name}</Text>
-                      {profile?.email ? <Text style={s.empEmail} numberOfLines={1}>{profile.email}</Text> : null}
+                      {a.profile?.email ? <Text style={s.empEmail} numberOfLines={1}>{a.profile.email}</Text> : null}
                     </View>
                     <View style={s.balRight}>
                       <Text style={[s.balNum, { color: balColor }]}>৳{Math.abs(bal).toLocaleString()}</Text>
@@ -229,7 +238,7 @@ export default function AccountsAdmin() {
                       <Ionicons name="swap-horizontal-outline" size={18} color={colors.gold} />
                     </TouchableOpacity>
                   </View>
-                </Card>
+                </View>
               )
             })
           )}
@@ -259,8 +268,7 @@ export default function AccountsAdmin() {
               </Text>
               <View style={s.pickerBox}>
                 {employees.map(e => {
-                  const profile = e.profiles as any
-                  const name = profile?.full_name ?? profile?.email ?? e.id.slice(0, 8)
+                  const name = e.profile?.full_name ?? e.profile?.email ?? e.id.slice(0, 8)
                   const active = selectedUserIds.includes(e.id)
                   return (
                     <TouchableOpacity
@@ -325,30 +333,6 @@ export default function AccountsAdmin() {
                 <Text style={s.dropdownText}>{category}</Text>
                 <Ionicons name="chevron-down" size={16} color={colors.slate400} />
               </TouchableOpacity>
-
-              {/* Effective Date & Month */}
-              <View style={s.dateRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.label}>Effective Date</Text>
-                  <TextInput
-                    style={s.input}
-                    value={effectiveDate}
-                    onChangeText={setEffectiveDate}
-                    placeholder="YYYY-MM-DD"
-                    placeholderTextColor={colors.slate500}
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.label}>Effective Month</Text>
-                  <TextInput
-                    style={s.input}
-                    value={effectiveMonth}
-                    onChangeText={setEffectiveMonth}
-                    placeholder="YYYY-MM"
-                    placeholderTextColor={colors.slate500}
-                  />
-                </View>
-              </View>
 
               {/* Notes */}
               <Text style={s.label}>Reason / Notes</Text>
@@ -424,7 +408,7 @@ const s = StyleSheet.create({
   addBarText: { color: colors.navy, fontWeight: '800', fontSize: 14 },
   scroll: { flex: 1 },
   listWrap: { paddingHorizontal: 12 },
-  card: { marginBottom: 8, padding: 12 },
+  card: { marginBottom: 8, padding: 12, backgroundColor: colors.navyLight, borderRadius: 14, borderWidth: 1, borderColor: colors.slate700 + '60' },
   cardRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   avatarWrap: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.blue + '33', alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: colors.blue, fontSize: 16, fontWeight: '800' },
@@ -480,7 +464,6 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: colors.slate700,
   },
   dropdownText: { color: colors.white, fontSize: 14 },
-  dateRow: { flexDirection: 'row', gap: 10 },
   notesInput: { height: 80, textAlignVertical: 'top' },
   // Action buttons
   actionRow: { flexDirection: 'row', gap: 10, marginTop: 16 },
