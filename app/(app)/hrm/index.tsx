@@ -11,13 +11,8 @@ import { colors } from '@/lib/theme'
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
 
-// Derived week shape from new schema
 interface Week {
   id: string
-  week_key: string
-  friday_date: string
-  status: string
-  // derived
   label: string
   start_date: string
   end_date: string
@@ -25,18 +20,12 @@ interface Week {
 }
 
 function deriveWeek(raw: any): Week {
-  const friday = new Date(raw.friday_date)
-  const monday = new Date(friday)
-  monday.setDate(friday.getDate() - 4)
   return {
     id: raw.id,
-    week_key: raw.week_key,
-    friday_date: raw.friday_date,
-    status: raw.status,
-    label: raw.week_key,
-    start_date: monday.toISOString().slice(0, 10),
-    end_date: raw.friday_date,
-    is_locked: raw.status !== 'OPEN',
+    label: raw.label,
+    start_date: raw.start_date,
+    end_date: raw.end_date,
+    is_locked: raw.is_locked ?? false,
   }
 }
 
@@ -69,7 +58,7 @@ export default function HrmDashboard() {
     // Get profile name (hrm_users may not have full_name in new schema)
     const [profileRes, weekRes] = await Promise.all([
       supabase.from('profiles').select('full_name').eq('id', user.id).maybeSingle(),
-      supabase.from('hrm_weeks').select('id,week_key,friday_date,status').order('friday_date', { ascending: false }).limit(1).maybeSingle(),
+      supabase.from('hrm_weeks').select('id,label,start_date,end_date,is_locked').order('end_date', { ascending: false }).limit(1).maybeSingle(),
     ])
     setFullName(profileRes.data?.full_name ?? null)
     setWeek(weekRes.data ? deriveWeek(weekRes.data) : null)

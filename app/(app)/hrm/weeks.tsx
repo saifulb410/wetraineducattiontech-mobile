@@ -12,13 +12,8 @@ import { Button } from '@/components/ui/Button'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { colors } from '@/lib/theme'
 
-// New schema: week_key (text), friday_date (date), status (OPEN | CLOSED)
 interface Week {
   id: string
-  week_key: string
-  friday_date: string
-  status: string
-  // derived
   label: string
   start_date: string
   end_date: string
@@ -26,18 +21,12 @@ interface Week {
 }
 
 function deriveWeek(raw: any): Week {
-  const friday = new Date(raw.friday_date)
-  const monday = new Date(friday)
-  monday.setDate(friday.getDate() - 4)
   return {
     id: raw.id,
-    week_key: raw.week_key,
-    friday_date: raw.friday_date,
-    status: raw.status,
-    label: raw.week_key,
-    start_date: monday.toISOString().slice(0, 10),
-    end_date: raw.friday_date,
-    is_locked: raw.status !== 'OPEN',
+    label: raw.label,
+    start_date: raw.start_date,
+    end_date: raw.end_date,
+    is_locked: raw.is_locked ?? false,
   }
 }
 
@@ -52,14 +41,13 @@ export default function HrmWeeks() {
   const [toggling, setToggling] = useState<string | null>(null)
   const [showAdd, setShowAdd] = useState(false)
   const [saving, setSaving] = useState(false)
-  // form: week_key (label) and friday_date (YYYY-MM-DD, the end of the week)
-  const [form, setForm] = useState({ week_key: '', friday_date: '' })
+  const [form, setForm] = useState({ label: '', start_date: '', end_date: '' })
 
   const fetchWeeks = async () => {
     const { data } = await supabase
       .from('hrm_weeks')
-      .select('id,week_key,friday_date,status')
-      .order('friday_date', { ascending: false })
+      .select('id,label,start_date,end_date,is_locked')
+      .order('end_date', { ascending: false })
     setWeeks(((data ?? []) as any[]).map(deriveWeek))
     setLoading(false)
     setRefreshing(false)
@@ -70,33 +58,38 @@ export default function HrmWeeks() {
 
   const toggleLock = async (w: Week) => {
     setToggling(w.id)
-    const newStatus = w.status === 'OPEN' ? 'CLOSED' : 'OPEN'
-    const { error } = await supabase.from('hrm_weeks').update({ status: newStatus }).eq('id', w.id)
+    const newLocked = !w.is_locked
+    const { error } = await supabase.from('hrm_weeks').update({ is_locked: newLocked }).eq('id', w.id)
     setToggling(null)
     if (error) Alert.alert('Error', error.message)
-    else setWeeks(prev => prev.map(x => x.id === w.id ? deriveWeek({ ...x, status: newStatus }) : x))
+    else setWeeks(prev => prev.map(x => x.id === w.id ? { ...x, is_locked: newLocked } : x))
   }
 
   const handleAdd = async () => {
-    if (!form.week_key.trim()) {
-      Alert.alert('Error', 'Week key / label is required (e.g. "W22-2026").')
+    if (!form.label.trim()) {
+      Alert.alert('Error', 'Week label is required (e.g. "2026-W24").')
       return
     }
-    if (!form.friday_date.trim() || !/^\d{4}-\d{2}-\d{2}$/.test(form.friday_date.trim())) {
-      Alert.alert('Error', 'Friday date is required in YYYY-MM-DD format.')
+    if (!form.start_date.trim() || !/^\d{4}-\d{2}-\d{2}$/.test(form.start_date.trim())) {
+      Alert.alert('Error', 'Start date is required in YYYY-MM-DD format.')
+      return
+    }
+    if (!form.end_date.trim() || !/^\d{4}-\d{2}-\d{2}$/.test(form.end_date.trim())) {
+      Alert.alert('Error', 'End date is required in YYYY-MM-DD format.')
       return
     }
     setSaving(true)
     const { error } = await supabase.from('hrm_weeks').insert({
-      week_key: form.week_key.trim(),
-      friday_date: form.friday_date.trim(),
-      status: 'OPEN',
+      label: form.label.trim(),
+      start_date: form.start_date.trim(),
+      end_date: form.end_date.trim(),
+      is_locked: false,
     })
     setSaving(false)
     if (error) Alert.alert('Error', error.message)
     else {
       setShowAdd(false)
-      setForm({ week_key: '', friday_date: '' })
+      setForm({ label: '', start_date: '', end_date: '' })
       fetchWeeks()
     }
   }
@@ -132,24 +125,32 @@ export default function HrmWeeks() {
           <Card style={s.addForm}>
             <Text style={s.formTitle}>Create New Week</Text>
 
-            <Text style={s.label}>Week Key / Label *</Text>
+            <Text style={s.label}>Week Label *</Text>
             <TextInput
               style={s.input}
-              placeholder="e.g. W22-2026 or Week 22"
+              placeholder="e.g. 2026-W24"
               placeholderTextColor={colors.slate500}
-              value={form.week_key}
-              onChangeText={v => setForm(f => ({ ...f, week_key: v }))}
+              value={form.label}
+              onChangeText={v => setForm(f => ({ ...f, label: v }))}
             />
 
-            <Text style={s.label}>Friday Date * (end of week)</Text>
+            <Text style={s.label}>Start Date * (Monday)</Text>
             <TextInput
               style={s.input}
               placeholder="YYYY-MM-DD"
               placeholderTextColor={colors.slate500}
-              value={form.friday_date}
-              onChangeText={v => setForm(f => ({ ...f, friday_date: v }))}
+              value={form.start_date}
+              onChangeText={v => setForm(f => ({ ...f, start_date: v }))}
             />
-            <Text style={s.hint}>The week span Monday–Friday will be computed automatically.</Text>
+
+            <Text style={s.label}>End Date * (Friday)</Text>
+            <TextInput
+              style={s.input}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor={colors.slate500}
+              value={form.end_date}
+              onChangeText={v => setForm(f => ({ ...f, end_date: v }))}
+            />
 
             <View style={s.formBtns}>
               <TouchableOpacity style={s.cancelBtn} onPress={() => setShowAdd(false)}>

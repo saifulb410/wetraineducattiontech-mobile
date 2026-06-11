@@ -10,28 +10,21 @@ import { useAuthContext } from '@/context/AuthContext'
 import { Card } from '@/components/ui/Card'
 import { colors } from '@/lib/theme'
 
-// New schema for hrm_weeks
 interface Week {
   id: string
-  week_key: string
-  friday_date: string
-  status: string
-  // derived
+  label: string
   start_date: string
   end_date: string
+  is_locked: boolean
 }
 
 function deriveWeek(raw: any): Week {
-  const friday = new Date(raw.friday_date)
-  const monday = new Date(friday)
-  monday.setDate(friday.getDate() - 4)
   return {
     id: raw.id,
-    week_key: raw.week_key,
-    friday_date: raw.friday_date,
-    status: raw.status,
-    start_date: monday.toISOString().slice(0, 10),
-    end_date: raw.friday_date,
+    label: raw.label,
+    start_date: raw.start_date,
+    end_date: raw.end_date,
+    is_locked: raw.is_locked ?? false,
   }
 }
 
@@ -68,7 +61,7 @@ export default function WeeklyReport() {
     const load = async () => {
       if (!user) return
       const [weeksRes, userRes, profileRes] = await Promise.all([
-        supabase.from('hrm_weeks').select('id,week_key,friday_date,status').order('friday_date', { ascending: false }).limit(4),
+        supabase.from('hrm_weeks').select('id,label,start_date,end_date,is_locked').order('end_date', { ascending: false }).limit(4),
         supabase.from('hrm_users').select('employee_id,department_id').eq('id', user.id).maybeSingle(),
         supabase.from('profiles').select('full_name').eq('id', user.id).maybeSingle(),
       ])
@@ -175,7 +168,7 @@ export default function WeeklyReport() {
               onPress={() => setSelectedWeekId(w.id)}
             >
               <Text style={[s.weekChipLabel, selectedWeekId === w.id && s.weekChipLabelActive]}>
-                {weekLabel(w, i)}
+                {weekLabel(w, i)} — {w.label}
               </Text>
               <Text style={[s.weekChipDate, selectedWeekId === w.id && s.weekChipDateActive]}>
                 {new Date(w.start_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
